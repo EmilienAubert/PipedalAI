@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pipedal-ai.local/schemas/proposal-set/1.0.0",
+  "title": "PiPedal AI ProposalSet v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "catalog", "proposals"],
+  "properties": {
+    "schema_version": {"const": "pipedal-ai.proposal-set/1.0.0"},
+    "request_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+    "catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "sha256"],
+      "properties": {
+        "revision": {"type": "integer", "minimum": 1},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "proposals": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {"$ref": "preset-spec-v1.schema.json"}
+    }
+  }
+}

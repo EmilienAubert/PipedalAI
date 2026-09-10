@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pipedal-ai.local/schemas/preset-spec/1.0.0",
+  "title": "PiPedal AI PresetSpec v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "catalog", "variant", "name", "description", "chain"],
+  "properties": {
+    "schema_version": {"const": "pipedal-ai.preset-spec/1.0.0"},
+    "catalog": {"$ref": "#/$defs/catalogRef"},
+    "variant": {"enum": ["conservative", "balanced", "bold"]},
+    "name": {"type": "string", "minLength": 1, "maxLength": 80},
+    "description": {"type": "string", "maxLength": 500},
+    "chain": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {"$ref": "#/$defs/step"}
+    }
+  },
+  "$defs": {
+    "catalogRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "sha256"],
+      "properties": {
+        "revision": {"type": "integer", "minimum": 1},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "asset_id"],
+      "properties": {
+        "role": {"enum": ["nam_model", "cab_ir", "reverb_ir"]},
+        "asset_id": {"type": "string", "pattern": "^ast_[a-f0-9]{24}$"}
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instance_id", "plugin_id", "bypass", "parameters", "resources"],
+      "properties": {
+        "instance_id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$"},
+        "plugin_id": {"type": "string", "pattern": "^plg_[a-f0-9]{24}$"},
+        "bypass": {"type": "boolean"},
+        "parameters": {
+          "type": "object",
+          "maxProperties": 64,
+          "additionalProperties": {"type": ["number", "boolean"]}
+        },
+        "resources": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {"$ref": "#/$defs/resource"}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,152 @@
+{
+  "$defs": {
+    "CatalogRef": {
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "sha256"
+      ],
+      "title": "CatalogRef",
+      "type": "object"
+    },
+    "ChainStep": {
+      "additionalProperties": false,
+      "properties": {
+        "instance_id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+          "title": "Instance Id",
+          "type": "string"
+        },
+        "plugin_id": {
+          "pattern": "^plg_[a-f0-9]{24}$",
+          "title": "Plugin Id",
+          "type": "string"
+        },
+        "bypass": {
+          "default": false,
+          "title": "Bypass",
+          "type": "boolean"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "maxProperties": 64,
+          "title": "Parameters",
+          "type": "object"
+        },
+        "resources": {
+          "items": {
+            "$ref": "#/$defs/ResourceBinding"
+          },
+          "maxItems": 4,
+          "title": "Resources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "instance_id",
+        "plugin_id"
+      ],
+      "title": "ChainStep",
+      "type": "object"
+    },
+    "ResourceBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "nam_model",
+            "cab_ir",
+            "reverb_ir"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "asset_id": {
+          "pattern": "^ast_[a-f0-9]{24}$",
+          "title": "Asset Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "asset_id"
+      ],
+      "title": "ResourceBinding",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "pipedal-ai.preset-spec/1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "catalog": {
+      "$ref": "#/$defs/CatalogRef"
+    },
+    "variant": {
+      "enum": [
+        "conservative",
+        "balanced",
+        "bold"
+      ],
+      "title": "Variant",
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "maxLength": 500,
+      "title": "Description",
+      "type": "string"
+    },
+    "chain": {
+      "items": {
+        "$ref": "#/$defs/ChainStep"
+      },
+      "maxItems": 12,
+      "minItems": 1,
+      "title": "Chain",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "catalog",
+    "variant",
+    "name",
+    "description",
+    "chain"
+  ],
+  "title": "PresetSpec",
+  "type": "object"
+}

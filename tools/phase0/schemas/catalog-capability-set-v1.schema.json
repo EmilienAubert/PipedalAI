@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pipedal-ai.local/schemas/catalog-capability-set/1.0.0",
+  "title": "PiPedal AI CatalogCapabilitySet v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "capability_sha256",
+    "catalog",
+    "plugins",
+    "assets"
+  ],
+  "properties": {
+    "schema_version": {"const": "pipedal-ai.catalog-capabilities/1.0.0"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "capability_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "sha256"],
+      "properties": {
+        "revision": {"type": "integer", "minimum": 1},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "plugin_id", "uri", "name", "class", "has_latency",
+          "descriptor_sha256", "audio_inputs", "audio_outputs", "controls"
+        ],
+        "properties": {
+          "plugin_id": {"type": "string", "pattern": "^plg_[a-f0-9]{24}$"},
+          "uri": {"type": "string"},
+          "name": {"type": ["string", "null"]},
+          "class": {"type": ["string", "null"]},
+          "has_latency": {"type": ["boolean", "null"]},
+          "descriptor_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "audio_inputs": {"type": "integer", "minimum": 0},
+          "audio_outputs": {"type": "integer", "minimum": 0},
+          "controls": {"type": "array", "items": {"type": "object"}}
+        }
+      }
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["asset_id", "display_name", "kind", "extension", "size_bytes", "sha256"],
+        "properties": {
+          "asset_id": {"type": "string", "pattern": "^ast_[a-f0-9]{24}$"},
+          "display_name": {"type": "string"},
+          "kind": {"enum": ["nam", "cab_ir", "reverb_ir"]},
+          "extension": {"type": "string"},
+          "size_bytes": {"type": "integer", "minimum": 0},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pipedal-ai.local/schemas/inventory/1.0.0",
+  "title": "PiPedal AI phase-zero inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "status",
+    "collector",
+    "host",
+    "pipedal",
+    "lv2",
+    "assets",
+    "catalog",
+    "warnings"
+  ],
+  "properties": {
+    "schema_version": {"const": "pipedal-ai.inventory/1.0.0"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "status": {"enum": ["complete", "partial"]},
+    "collector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "network_access", "shell_execution"],
+      "properties": {
+        "name": {"const": "pipedal-ai-inspect"},
+        "version": {"type": "string"},
+        "network_access": {"const": false},
+        "shell_execution": {"const": false}
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "machine", "kernel_release", "python_version", "os_release"],
+      "properties": {
+        "model": {"type": ["string", "null"]},
+        "machine": {"type": "string"},
+        "kernel_release": {"type": "string"},
+        "python_version": {"type": "string"},
+        "os_release": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "pipedal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package_version", "service_state", "data_root", "audio_config"],
+      "properties": {
+        "package_version": {"type": ["string", "null"]},
+        "service_state": {"type": "string"},
+        "data_root": {"type": "string"},
+        "audio_config": {"type": ["object", "null"], "additionalProperties": true}
+      }
+    },
+    "lv2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "tools", "plugin_count", "plugins"],
+      "properties": {
+        "status": {"enum": ["complete", "partial", "unavailable", "failed", "skipped"]},
+        "tools": {"type": "object", "additionalProperties": true},
+        "plugin_count": {"type": "integer", "minimum": 0},
+        "plugins": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/plugin"}
+        }
+      }
+    },
+    "assets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["upload_root", "roots", "asset_count", "items"],
+      "properties": {
+        "upload_root": {"type": "string"},
+        "roots": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
+        "asset_count": {"type": "integer", "minimum": 0},
+        "items": {"type": "array", "items": {"$ref": "#/$defs/asset"}}
+      }
+    },
+    "catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "version", "sha256", "plugin_count", "asset_count"],
+      "properties": {
+        "schema_version": {"const": "pipedal-ai.catalog-source/1.0.0"},
+        "version": {"type": ["integer", "null"], "minimum": 1},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "plugin_count": {"type": "integer", "minimum": 0},
+        "asset_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "warnings": {"type": "array", "items": {"$ref": "#/$defs/warning"}}
+  },
+  "$defs": {
+    "plugin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uri",
+        "name",
+        "class",
+        "author",
+        "has_latency",
+        "required_features",
+        "optional_features",
+        "extension_data",
+        "ports",
+        "reported_uri",
+        "plugin_id",
+        "descriptor_scope",
+        "descriptor_sha256",
+        "source_sha256"
+      ],
+      "properties": {
+        "uri": {"type": "string"},
+        "name": {"type": ["string", "null"]},
+        "class": {"type": ["string", "null"]},
+        "author": {"type": ["string", "null"]},
+        "has_latency": {"type": ["boolean", "null"]},
+        "required_features": {"type": "array", "items": {"type": "string"}},
+        "optional_features": {"type": "array", "items": {"type": "string"}},
+        "extension_data": {"type": "array", "items": {"type": "string"}},
+        "ports": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
+        "reported_uri": {"type": ["string", "null"]},
+        "plugin_id": {"type": "string", "pattern": "^plg_[a-f0-9]{24}$"},
+        "descriptor_scope": {"const": "lv2info-v1"},
+        "descriptor_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "raw_lv2info": {"type": "string"}
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asset_id",
+        "kind",
+        "relative_path",
+        "extension",
+        "size_bytes",
+        "mtime_ns",
+        "sha256"
+      ],
+      "properties": {
+        "asset_id": {"type": "string", "pattern": "^ast_[a-f0-9]{24}$"},
+        "kind": {"enum": ["nam", "cab_ir", "reverb_ir"]},
+        "relative_path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"},
+        "extension": {"type": "string"},
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "mtime_ns": {"type": "integer", "minimum": 0},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "code", "message"],
+      "properties": {
+        "severity": {"enum": ["warning", "error"]},
+        "code": {"type": "string", "pattern": "^[A-Z0-9_]+$"},
+        "message": {"type": "string"},
+        "context": {"type": "object", "additionalProperties": true}
+      }
+    }
+  }
+}

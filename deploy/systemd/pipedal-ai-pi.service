@@ -1,0 +1,22 @@
+[Unit]
+Description=PiPedal AI Raspberry Pi Authority
+After=network.target pipedal.service
+Wants=pipedal.service
+
+[Service]
+Type=simple
+User=pipedal-ai
+Group=pipedal-ai
+EnvironmentFile=/etc/pipedal-ai/pi.env
+ExecStart=/opt/pipedal-ai/venv/bin/pipedal-ai-pi --config /etc/pipedal-ai/pi.toml
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/pipedal-ai
+ReadOnlyPaths=/var/pipedal/audio_uploads /usr/lib/lv2
+
+[Install]
+WantedBy=multi-user.target

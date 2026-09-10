@@ -1,0 +1,36 @@
+[server]
+host = "0.0.0.0"
+port = 8090
+allowed_cidrs = ["127.0.0.0/8", "192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12"]
+api_key_env = "PIPEDAL_AI_API_KEY"
+
+[storage]
+database = "/var/lib/pipedal-ai/pipedal-ai.db"
+artifact_root = "/var/lib/pipedal-ai/artifacts"
+upload_root = "/var/pipedal/audio_uploads"
+
+[rtx]
+base_url = "https://192.168.1.50:8091"
+timeout_seconds = 90
+bearer_token_env = "PIPEDAL_AI_RTX_TOKEN"
+ca_file = "/etc/pipedal-ai/tls/ca.crt"
+client_cert_file = "/etc/pipedal-ai/tls/pi.crt"
+client_key_file = "/etc/pipedal-ai/tls/pi.key"
+enabled = true
+
+[pipedal]
+http_base_url = "http://127.0.0.1:8080"
+websocket_url = "ws://127.0.0.1:8080/pipedal"
+upload_path = "/var/uploadPreset"
+max_upload_bytes = 1048576
+allow_import = false
+allow_activation = false
+
+[policy]
+max_chain_length = 10
+max_prompt_chars = 2000
+max_artifact_uncompressed_bytes = 67108864
+default_input_volume_db = -6.0
+default_output_volume_db = -6.0
+max_load_per_cpu = 0.90
+min_free_mb = 256

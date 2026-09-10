@@ -1,0 +1,47 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "pipedal-ai.rtx-request/1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "prompt": {
+      "maxLength": 2000,
+      "minLength": 3,
+      "title": "Prompt",
+      "type": "string"
+    },
+    "profile": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Profile"
+    },
+    "capabilities": {
+      "additionalProperties": true,
+      "title": "Capabilities",
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "request_id",
+    "prompt",
+    "capabilities"
+  ],
+  "title": "RTXProposalRequest",
+  "type": "object"
+}

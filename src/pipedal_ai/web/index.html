@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PiPedal AI</title><link rel="stylesheet" href="/style.css"></head>
+<body><main>
+  <header><div><span class="eyebrow">RASPBERRY PI · AUTORITÉ</span><h1>PiPedal AI</h1></div><span id="health" class="badge">connexion…</span></header>
+  <section class="panel">
+    <label>Clé locale <input id="key" type="password" autocomplete="current-password" placeholder="X-PiPedal-AI-Key"></label>
+    <label>Décris le son recherché<textarea id="prompt" maxlength="2000" placeholder="Crunch blues chaud, dynamique, petite room…"></textarea></label>
+    <label>Profil guitare <select id="profile"><option value="">Profil par défaut</option></select></label>
+    <div class="checks"><label><input id="autoImport" type="checkbox"> importer dans PiPedal</label><label><input id="autoActivate" type="checkbox"> activer la variante équilibrée</label></div>
+    <button id="generate">Générer trois variantes</button><p id="message"></p>
+  </section>
+  <section><h2>Travaux</h2><div id="jobs" class="jobs"></div></section>
+</main><script src="/app.js"></script></body></html>

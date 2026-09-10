@@ -1,0 +1,39 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "prompt": {
+      "maxLength": 2000,
+      "minLength": 3,
+      "title": "Prompt",
+      "type": "string"
+    },
+    "profile_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Profile Id"
+    },
+    "auto_import": {
+      "default": false,
+      "title": "Auto Import",
+      "type": "boolean"
+    },
+    "auto_activate": {
+      "default": false,
+      "title": "Auto Activate",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "prompt"
+  ],
+  "title": "TextPresetJobRequest",
+  "type": "object"
+}
