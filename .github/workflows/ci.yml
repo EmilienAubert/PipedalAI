@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install package
+        run: python -m pip install --upgrade pip && python -m pip install ".[dev]"
+      - name: Import and syntax smoke test
+        run: |
+          python -m compileall -q src tools scripts tests
+          python -c "from pipedal_ai.pi.app import create_app; from pipedal_ai.rtx.app import create_app as create_rtx_app"
+      - name: Test MVP core
+        run: python -m unittest discover -s tests -v
+      - name: Test phase-zero tooling
+        working-directory: tools/phase0
+        run: python -m unittest discover -s tests -v

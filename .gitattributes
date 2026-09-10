@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.piPreset binary
+*.whl binary
+*.nam binary
+*.wav binary
