@@ -52,7 +52,7 @@ def _zip_info(name: str) -> zipfile.ZipInfo:
 
 
 def _json_bytes(value: Any) -> bytes:
-    return (json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2) + "\n").encode()
+    return (json.dumps(value, ensure_ascii=False, allow_nan=False, indent=2) + "\n").encode()
 
 
 def _safe_filename(value: str) -> str:

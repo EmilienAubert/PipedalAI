@@ -35,7 +35,7 @@ class PiPedalClient:
                 response = await client.post(
                     f"{self.config.http_base_url}{self.config.upload_path}",
                     content=path.read_bytes(),
-                    headers={"Content-Type": "application/octet-stream"},
+                    headers={"Content-Type": "application/json"},
                 )
                 response.raise_for_status()
                 instance_id = int(response.text.strip())

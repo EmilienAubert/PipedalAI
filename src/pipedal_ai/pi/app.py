@@ -87,7 +87,7 @@ def create_app(config: PiConfig) -> FastAPI:
                 raise HTTPException(404, "Profil inconnu")
 
     @app.post("/api/v1/jobs/text", dependencies=[Depends(require_key)], status_code=202)
-    def create_job(value: TextPresetJobRequest) -> dict:
+    async def create_job(value: TextPresetJobRequest) -> dict:
         if len(value.prompt) > config.policy.max_prompt_chars:
             raise HTTPException(422, "Prompt trop long")
         try:
