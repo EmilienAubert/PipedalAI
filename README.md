@@ -63,6 +63,7 @@ En production, utilisez le mTLS décrit dans [Sécurité](docs/security.md), et 
 - [Configuration](docs/configuration.md)
 - [API v1](docs/api.md)
 - [Format PresetSpec et `.piPreset`](docs/preset-format.md)
+- [Fonctionnement du générateur local](docs/generateur-local.md)
 - [Modèle SQLite et arborescence](docs/data-model.md)
 - [Sécurité et modèle de menace](docs/security.md)
 - [Exploitation et dépannage](docs/operations.md)

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pipedal-ai"
-version = "0.5.0"
+version = "0.6.0"
 description = "Authoritative PiPedal preset generation orchestrated by Raspberry Pi"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -33,4 +33,3 @@ pipedal_ai = ["web/*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-

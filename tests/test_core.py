@@ -10,7 +10,7 @@ from pathlib import Path
 from pipedal_ai.catalog import CatalogService
 from pipedal_ai.compiler import PresetCompiler
 from pipedal_ai.db import Database
-from pipedal_ai.degraded import DegradedProposer
+from pipedal_ai.degraded import DegradedProposer, _choose_asset, _find_plugin, _prompt_tags
 
 
 def descriptor(uri: str, name: str, controls: list[dict]) -> str:
@@ -58,6 +58,32 @@ class CoreTests(unittest.TestCase):
         self.assertEqual([p.variant for p in value.proposals], ["conservative", "balanced", "bold"])
         self.catalog.validate_proposal_set(value)
 
+    def test_french_prompt_is_normalized(self):
+        tags = _prompt_tags("Son clair, chaud et légèrement saturé, avec une pièce légère")
+        self.assertTrue({"clean", "warm", "crunch", "space"}.issubset(tags))
+        self.assertNotIn("high_gain", tags)
+
+    def test_plugin_priority_does_not_depend_on_catalog_order(self):
+        capabilities = {
+            "plugins": [
+                {"plugin_id": "club", "name": "GxClubDrive", "uri": "clubdrive"},
+                {"plugin_id": "ts", "name": "GxTubeScreamer", "uri": "gxts9"},
+            ]
+        }
+        selected = _find_plugin(capabilities, "gxtubescreamer", "clubdrive")
+        self.assertEqual(selected["plugin_id"], "ts")
+
+    def test_french_tone_selects_matching_nam(self):
+        capabilities = {
+            "assets": [
+                {"asset_id": "clean", "kind": "nam", "display_name": "Orange AD30 Cleanest"},
+                {"asset_id": "crunch", "kind": "nam", "display_name": "Fender Tweed Deluxe Crunch Warm"},
+                {"asset_id": "metal", "kind": "nam", "display_name": "EVH 5150 Metal Lead"},
+            ]
+        }
+        selected = _choose_asset(capabilities, "nam", "blues chaud avec un crunch léger")
+        self.assertEqual(selected["asset_id"], "crunch")
+
     def test_compiler_embeds_verified_media_and_pipedal_shape(self):
         spec = DegradedProposer().propose("req", "clean", self.catalog.capabilities()).proposals[1]
         compiler = PresetCompiler(self.catalog, self.root / "uploads", 1_000_000)
@@ -70,7 +96,9 @@ class CoreTests(unittest.TestCase):
             bank = json.loads(archive.read("bankFile.json"))
             item = next(x for x in bank["presets"][0]["preset"]["items"] if x["uri"].endswith("toob-nam"))
             self.assertTrue(item["lv2State"][0])
-            self.assertEqual(item["lv2State"][1]["http://two-play.com/plugins/toob-nam#modelFile"]["value"], "NeuralAmpModels/model.nam")
+            state_entry = item["lv2State"][1]["http://two-play.com/plugins/toob-nam#modelFile"]
+            self.assertEqual(list(state_entry), ["flags", "atomType", "value"])
+            self.assertEqual(state_entry["value"], "NeuralAmpModels/model.nam")
 
     def test_catalog_mismatch_is_rejected(self):
         value = DegradedProposer().propose("req", "clean", self.catalog.capabilities())
