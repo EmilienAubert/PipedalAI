@@ -75,6 +75,16 @@ CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_artifacts_job ON artifacts(job_id);
 """
 
+APP_SCHEMA_V3_SQL = """
+CREATE TABLE IF NOT EXISTS asset_metadata (
+ revision INTEGER NOT NULL, asset_id TEXT NOT NULL, source TEXT NOT NULL,
+ metadata_json TEXT NOT NULL, updated_at TEXT NOT NULL,
+ PRIMARY KEY(revision,asset_id,source),
+ FOREIGN KEY(revision,asset_id) REFERENCES catalog_assets(revision,asset_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_asset_metadata_revision ON asset_metadata(revision,asset_id);
+"""
+
 
 class Database:
     def __init__(self, path: Path):
@@ -88,15 +98,13 @@ class Database:
         existed = self.path.exists()
         with self.connect() as connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2):
+            if version not in (0, 1, 2, 3):
                 raise CatalogError(f"Version SQLite incompatible : {version}")
             if version == 0:
                 connection.executescript(CATALOG_SCHEMA_SQL)
-            if version <= 1:
-                connection.executescript(APP_SCHEMA_SQL)
-                connection.execute("PRAGMA user_version=2")
-            else:
-                connection.executescript(APP_SCHEMA_SQL)
+            connection.executescript(APP_SCHEMA_SQL)
+            connection.executescript(APP_SCHEMA_V3_SQL)
+            connection.execute("PRAGMA user_version=3")
         if not existed:
             os.chmod(self.path, 0o600)
 

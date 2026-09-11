@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import ipaddress
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -86,12 +87,22 @@ class OllamaConfig:
     model: str
     timeout_seconds: float
     temperature: float
+    max_retries: int = 1
+    max_plugin_candidates: int = 24
+    max_assets_per_role: int = 12
+
+
+@dataclass(frozen=True)
+class FingerprintConfig:
+    enabled: bool
+    index_path: Path
 
 
 @dataclass(frozen=True)
 class RTXConfig:
     server: ServerConfig
     ollama: OllamaConfig
+    fingerprints: FingerprintConfig
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -107,6 +118,15 @@ def _optional_path(value: Any) -> Path | None:
     return Path(value) if isinstance(value, str) and value else None
 
 
+def _loopback_host(host: str) -> bool:
+    if host.casefold() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def load_pi_config(path: Path) -> PiConfig:
     data = _load(path)
     server = _section(data, "server")
@@ -115,14 +135,20 @@ def load_pi_config(path: Path) -> PiConfig:
     pipedal = _section(data, "pipedal")
     policy = _section(data, "policy")
     api_env = str(server.get("api_key_env", "PIPEDAL_AI_API_KEY"))
+    api_key = _secret_from_env(api_env, required=False)
+    server_host = str(server.get("host", "127.0.0.1"))
+    if not api_key and not _loopback_host(server_host):
+        raise ConfigurationError(
+            f"La variable {api_env} est requise lorsque le service Pi écoute hors loopback."
+        )
     token_env = str(rtx.get("bearer_token_env", "PIPEDAL_AI_RTX_TOKEN"))
     enabled = bool(rtx.get("enabled", True))
     return PiConfig(
         server=ServerConfig(
-            host=str(server.get("host", "127.0.0.1")),
+            host=server_host,
             port=int(server.get("port", 8090)),
             allowed_cidrs=tuple(server.get("allowed_cidrs", ["127.0.0.0/8"])),
-            api_key=_secret_from_env(api_env, required=False),
+            api_key=api_key,
         ),
         storage=StorageConfig(
             database=Path(storage.get("database", "./data/pipedal-ai.db")),
@@ -131,7 +157,7 @@ def load_pi_config(path: Path) -> PiConfig:
         ),
         rtx=RTXClientConfig(
             base_url=str(rtx.get("base_url", "https://127.0.0.1:8091")).rstrip("/"),
-            timeout_seconds=float(rtx.get("timeout_seconds", 90)),
+            timeout_seconds=float(rtx.get("timeout_seconds", 300)),
             bearer_token=_secret_from_env(token_env, required=enabled),
             ca_file=_optional_path(rtx.get("ca_file")),
             client_cert_file=_optional_path(rtx.get("client_cert_file")),
@@ -139,8 +165,8 @@ def load_pi_config(path: Path) -> PiConfig:
             enabled=enabled,
         ),
         pipedal=PiPedalConfig(
-            http_base_url=str(pipedal.get("http_base_url", "http://127.0.0.1:8080")).rstrip("/"),
-            websocket_url=str(pipedal.get("websocket_url", "ws://127.0.0.1:8080/pipedal")),
+            http_base_url=str(pipedal.get("http_base_url", "http://127.0.0.1:80")).rstrip("/"),
+            websocket_url=str(pipedal.get("websocket_url", "ws://127.0.0.1:80/pipedal")),
             upload_path=str(pipedal.get("upload_path", "/var/uploadPreset")),
             max_upload_bytes=int(pipedal.get("max_upload_bytes", 1048576)),
             allow_import=bool(pipedal.get("allow_import", False)),
@@ -162,6 +188,7 @@ def load_rtx_config(path: Path) -> RTXConfig:
     data = _load(path)
     server = _section(data, "server")
     ollama = _section(data, "ollama")
+    fingerprints = _section(data, "fingerprints")
     token_env = str(server.get("bearer_token_env", "PIPEDAL_AI_RTX_TOKEN"))
     return RTXConfig(
         server=ServerConfig(
@@ -173,7 +200,14 @@ def load_rtx_config(path: Path) -> RTXConfig:
         ollama=OllamaConfig(
             base_url=str(ollama.get("base_url", "http://127.0.0.1:11434")).rstrip("/"),
             model=str(ollama.get("model", "qwen3:14b")),
-            timeout_seconds=float(ollama.get("timeout_seconds", 120)),
+            timeout_seconds=float(ollama.get("timeout_seconds", 90)),
             temperature=float(ollama.get("temperature", 0.2)),
+            max_retries=max(0, min(3, int(ollama.get("max_retries", 1)))),
+            max_plugin_candidates=max(8, min(64, int(ollama.get("max_plugin_candidates", 24)))),
+            max_assets_per_role=max(1, min(64, int(ollama.get("max_assets_per_role", 12)))),
+        ),
+        fingerprints=FingerprintConfig(
+            enabled=bool(fingerprints.get("enabled", True)),
+            index_path=Path(fingerprints.get("index_path", "./data/fingerprints.json")),
         ),
     )

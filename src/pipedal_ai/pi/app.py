@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -81,10 +82,13 @@ def create_app(config: PiConfig) -> FastAPI:
 
     @app.delete("/api/v1/profiles/{profile_id}", dependencies=[Depends(require_key)], status_code=204)
     def delete_profile(profile_id: str) -> None:
-        with database.transaction() as connection:
-            result = connection.execute("DELETE FROM guitar_profiles WHERE profile_id=?", (profile_id,))
-            if result.rowcount != 1:
-                raise HTTPException(404, "Profil inconnu")
+        try:
+            with database.transaction() as connection:
+                result = connection.execute("DELETE FROM guitar_profiles WHERE profile_id=?", (profile_id,))
+                if result.rowcount != 1:
+                    raise HTTPException(404, "Profil inconnu")
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(409, "Ce profil est déjà référencé par un travail.") from exc
 
     @app.post("/api/v1/jobs/text", dependencies=[Depends(require_key)], status_code=202)
     async def create_job(value: TextPresetJobRequest) -> dict:
@@ -113,6 +117,8 @@ def create_app(config: PiConfig) -> FastAPI:
             path = manager.artifact_path(artifact_id)
         except KeyError as exc:
             raise HTTPException(404, "Artefact inconnu") from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
         return FileResponse(path, media_type="application/zip", filename=path.name)
 
     @app.post("/api/v1/artifacts/{artifact_id}/import", dependencies=[Depends(require_key)])

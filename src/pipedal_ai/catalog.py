@@ -41,9 +41,17 @@ class CatalogService:
         row = self.database.active_catalog()
         return CatalogRef(revision=row["revision"], sha256=row["catalog_sha256"])
 
-    def capabilities(self) -> dict[str, Any]:
+    def capabilities(self, catalog: CatalogRef | None = None) -> dict[str, Any]:
         with self.database.connect() as connection:
-            revision = self.database.active_catalog(connection)
+            if catalog is None:
+                revision = self.database.active_catalog(connection)
+            else:
+                revision = connection.execute(
+                    "SELECT * FROM catalog_revisions WHERE revision=? AND catalog_sha256=?",
+                    (catalog.revision, catalog.sha256),
+                ).fetchone()
+                if revision is None:
+                    raise CatalogError("La révision de catalogue figée n'existe plus.")
             plugins = []
             for plugin in connection.execute(
                 "SELECT * FROM catalog_plugins WHERE revision=? ORDER BY uri",
@@ -82,8 +90,20 @@ class CatalogService:
                         "controls": controls,
                     }
                 )
-            assets = [
-                {
+            metadata_by_asset: dict[str, dict[str, Any]] = {}
+            for metadata_row in connection.execute(
+                "SELECT asset_id,source,metadata_json FROM asset_metadata WHERE revision=? ORDER BY asset_id,source",
+                (revision["revision"],),
+            ):
+                metadata_by_asset.setdefault(metadata_row["asset_id"], {})[metadata_row["source"]] = json.loads(
+                    metadata_row["metadata_json"]
+                )
+            assets = []
+            for row in connection.execute(
+                "SELECT * FROM catalog_assets WHERE revision=? ORDER BY asset_id",
+                (revision["revision"],),
+            ):
+                asset = {
                     "asset_id": row["asset_id"],
                     "display_name": PurePosixPath(row["relative_path"]).stem,
                     "kind": row["kind"],
@@ -91,11 +111,9 @@ class CatalogService:
                     "size_bytes": row["size_bytes"],
                     "sha256": row["sha256"],
                 }
-                for row in connection.execute(
-                    "SELECT * FROM catalog_assets WHERE revision=? ORDER BY asset_id",
-                    (revision["revision"],),
-                )
-            ]
+                if row["asset_id"] in metadata_by_asset:
+                    asset["metadata"] = metadata_by_asset[row["asset_id"]]
+                assets.append(asset)
         payload = {
             "schema_version": CAPABILITY_SCHEMA_VERSION,
             "catalog": {"revision": revision["revision"], "sha256": revision["catalog_sha256"]},

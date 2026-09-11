@@ -18,7 +18,10 @@ sudo install -d -o "$USER" -g "$USER" -m 700 /var/lib/pipedal-ai
 cp config/pi.example.toml config/pi.toml
 ```
 
-Adaptez `database`, `artifact_root`, l'adresse RTX et les certificats dans `config/pi.toml`.
+L'exemple écoute uniquement sur `127.0.0.1`. Adaptez `server.host`, limitez
+`allowed_cidrs` aux clients réellement utiles, puis configurez `database`, `artifact_root`,
+l'adresse RTX et les certificats dans `config/pi.toml`. Le service refuse désormais une
+écoute hors loopback si `PIPEDAL_AI_API_KEY` est vide.
 
 ## Catalogue initial
 

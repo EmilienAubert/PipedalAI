@@ -18,10 +18,15 @@
 
 ## RTX
 
-`ollama.model` est le seul choix de moteur actuellement concret. L'appel étant isolé derrière `OllamaClient` et une API `/api/v1`, un autre moteur pourra le remplacer sans modifier le Pi.
+`ollama.model` sélectionne le modèle. `max_retries`, `max_plugin_candidates` et
+`max_assets_per_role` bornent le coût et la quantité de données envoyée au planificateur.
+`fingerprints.index_path` désigne l'index local RTX ; un index absent démarre vide.
+L'appel étant isolé derrière `OllamaClient` et une API `/api/v1`, un autre moteur pourra
+le remplacer sans modifier le Pi.
 
 ## Secrets
 
 - `PIPEDAL_AI_API_KEY` protège l'API/UI du Pi ; vide uniquement pour développement local ;
 - `PIPEDAL_AI_RTX_TOKEN` complète le mTLS et doit être identique des deux côtés ;
+- `TONE3000_ACCESS_TOKEN` n'est lu que pendant une commande explicite d'enrichissement ;
 - ne placez aucune valeur secrète dans les fichiers TOML versionnés.

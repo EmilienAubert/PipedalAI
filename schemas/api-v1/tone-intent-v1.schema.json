@@ -1,0 +1,604 @@
+{
+  "$defs": {
+    "ChainConstraints": {
+      "additionalProperties": false,
+      "properties": {
+        "max_plugins": {
+          "default": 8,
+          "maximum": 12,
+          "minimum": 1,
+          "title": "Max Plugins",
+          "type": "integer"
+        },
+        "cpu_budget": {
+          "default": "balanced",
+          "enum": [
+            "low",
+            "balanced",
+            "high"
+          ],
+          "title": "Cpu Budget",
+          "type": "string"
+        },
+        "prefer_simple_chain": {
+          "default": true,
+          "title": "Prefer Simple Chain",
+          "type": "boolean"
+        },
+        "allow_stereo": {
+          "default": true,
+          "title": "Allow Stereo",
+          "type": "boolean"
+        },
+        "allow_nam": {
+          "default": true,
+          "title": "Allow Nam",
+          "type": "boolean"
+        },
+        "allow_cab_ir": {
+          "default": true,
+          "title": "Allow Cab Ir",
+          "type": "boolean"
+        },
+        "required_roles": {
+          "items": {
+            "enum": [
+              "input",
+              "noise_gate",
+              "compressor",
+              "pitch",
+              "wah",
+              "drive",
+              "amp",
+              "cabinet",
+              "eq",
+              "modulation",
+              "delay",
+              "reverb",
+              "output"
+            ],
+            "type": "string"
+          },
+          "maxItems": 13,
+          "title": "Required Roles",
+          "type": "array"
+        },
+        "forbidden_roles": {
+          "items": {
+            "enum": [
+              "input",
+              "noise_gate",
+              "compressor",
+              "pitch",
+              "wah",
+              "drive",
+              "amp",
+              "cabinet",
+              "eq",
+              "modulation",
+              "delay",
+              "reverb",
+              "output"
+            ],
+            "type": "string"
+          },
+          "maxItems": 13,
+          "title": "Forbidden Roles",
+          "type": "array"
+        }
+      },
+      "title": "ChainConstraints",
+      "type": "object"
+    },
+    "DelayIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "kind": {
+          "default": "none",
+          "enum": [
+            "none",
+            "slapback",
+            "analog",
+            "tape",
+            "digital",
+            "multi_tap"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "mix": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Mix",
+          "type": "number"
+        },
+        "feedback": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Feedback",
+          "type": "number"
+        },
+        "time_ms": {
+          "anyOf": [
+            {
+              "maximum": 4000.0,
+              "minimum": 1.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time Ms"
+        },
+        "subdivision": {
+          "anyOf": [
+            {
+              "enum": [
+                "whole",
+                "half",
+                "quarter",
+                "eighth",
+                "dotted_eighth",
+                "triplet",
+                "sixteenth"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subdivision"
+        }
+      },
+      "title": "DelayIntent",
+      "type": "object"
+    },
+    "DynamicsIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "compression": {
+          "default": 0.15,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Compression",
+          "type": "number"
+        },
+        "pick_sensitivity": {
+          "default": 0.8,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Pick Sensitivity",
+          "type": "number"
+        },
+        "sustain": {
+          "default": 0.35,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Sustain",
+          "type": "number"
+        },
+        "transient_attack": {
+          "default": 0.75,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Transient Attack",
+          "type": "number"
+        },
+        "noise_tolerance": {
+          "default": 0.2,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Noise Tolerance",
+          "type": "number"
+        }
+      },
+      "title": "DynamicsIntent",
+      "type": "object"
+    },
+    "GainIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "character": {
+          "default": "clean",
+          "enum": [
+            "clean",
+            "edge_of_breakup",
+            "crunch",
+            "overdrive",
+            "distortion",
+            "high_gain",
+            "fuzz"
+          ],
+          "title": "Character",
+          "type": "string"
+        },
+        "amount": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Amount",
+          "type": "number"
+        },
+        "saturation_softness": {
+          "default": 0.7,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Saturation Softness",
+          "type": "number"
+        }
+      },
+      "title": "GainIntent",
+      "type": "object"
+    },
+    "GuitarContext": {
+      "additionalProperties": false,
+      "properties": {
+        "profile_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Profile Id"
+        },
+        "description": {
+          "default": "",
+          "maxLength": 120,
+          "title": "Description",
+          "type": "string"
+        },
+        "pickup": {
+          "default": "unknown",
+          "enum": [
+            "unknown",
+            "single_coil",
+            "humbucker",
+            "p90",
+            "active",
+            "piezo"
+          ],
+          "title": "Pickup",
+          "type": "string"
+        },
+        "pickup_position": {
+          "default": "unknown",
+          "enum": [
+            "unknown",
+            "bridge",
+            "middle",
+            "neck",
+            "mixed"
+          ],
+          "title": "Pickup Position",
+          "type": "string"
+        },
+        "output_level": {
+          "default": "unknown",
+          "enum": [
+            "unknown",
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Output Level",
+          "type": "string"
+        },
+        "input_trim_db": {
+          "default": 0.0,
+          "maximum": 24.0,
+          "minimum": -24.0,
+          "title": "Input Trim Db",
+          "type": "number"
+        },
+        "playing_style": {
+          "default": "unknown",
+          "enum": [
+            "unknown",
+            "pick",
+            "fingers",
+            "hybrid"
+          ],
+          "title": "Playing Style",
+          "type": "string"
+        }
+      },
+      "title": "GuitarContext",
+      "type": "object"
+    },
+    "ModulationIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "kind": {
+          "default": "none",
+          "enum": [
+            "none",
+            "chorus",
+            "flanger",
+            "phaser",
+            "tremolo",
+            "vibrato",
+            "rotary",
+            "detune"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "mix": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Mix",
+          "type": "number"
+        },
+        "depth": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Depth",
+          "type": "number"
+        },
+        "rate": {
+          "default": 0.3,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Rate",
+          "type": "number"
+        },
+        "stereo_width": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Stereo Width",
+          "type": "number"
+        }
+      },
+      "title": "ModulationIntent",
+      "type": "object"
+    },
+    "SpaceIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "kind": {
+          "default": "dry",
+          "enum": [
+            "dry",
+            "room",
+            "spring",
+            "plate",
+            "hall",
+            "ambient"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "mix": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Mix",
+          "type": "number"
+        },
+        "size": {
+          "default": 0.25,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Size",
+          "type": "number"
+        },
+        "decay": {
+          "default": 0.2,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Decay",
+          "type": "number"
+        },
+        "pre_delay": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Pre Delay",
+          "type": "number"
+        }
+      },
+      "title": "SpaceIntent",
+      "type": "object"
+    },
+    "SpectrumIntent": {
+      "additionalProperties": false,
+      "description": "Relative tonal targets; zero means neutral, not silence.",
+      "properties": {
+        "bass": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": -1.0,
+          "title": "Bass",
+          "type": "number"
+        },
+        "low_mids": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": -1.0,
+          "title": "Low Mids",
+          "type": "number"
+        },
+        "mids": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": -1.0,
+          "title": "Mids",
+          "type": "number"
+        },
+        "high_mids": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": -1.0,
+          "title": "High Mids",
+          "type": "number"
+        },
+        "treble": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": -1.0,
+          "title": "Treble",
+          "type": "number"
+        },
+        "warmth": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Warmth",
+          "type": "number"
+        },
+        "brightness": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Brightness",
+          "type": "number"
+        },
+        "bass_tightness": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Bass Tightness",
+          "type": "number"
+        }
+      },
+      "title": "SpectrumIntent",
+      "type": "object"
+    },
+    "StyleIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "genres": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Genres",
+          "type": "array"
+        },
+        "era": {
+          "default": "unspecified",
+          "enum": [
+            "unspecified",
+            "1950s",
+            "1960s",
+            "1970s",
+            "1980s",
+            "1990s",
+            "2000s",
+            "2010s",
+            "modern"
+          ],
+          "title": "Era",
+          "type": "string"
+        },
+        "character": {
+          "items": {
+            "enum": [
+              "vintage",
+              "modern",
+              "organic",
+              "raw",
+              "polished",
+              "smooth",
+              "aggressive",
+              "dark",
+              "warm",
+              "bright",
+              "airy"
+            ],
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Character",
+          "type": "array"
+        }
+      },
+      "title": "StyleIntent",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Versioned musical target exchanged independently from LV2/NAM choices.",
+  "properties": {
+    "schema_version": {
+      "const": "pipedal-ai.tone-intent/1.0.0",
+      "default": "pipedal-ai.tone-intent/1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "prompt": {
+      "maxLength": 2000,
+      "minLength": 3,
+      "title": "Prompt",
+      "type": "string"
+    },
+    "gain": {
+      "$ref": "#/$defs/GainIntent"
+    },
+    "dynamics": {
+      "$ref": "#/$defs/DynamicsIntent"
+    },
+    "spectrum": {
+      "$ref": "#/$defs/SpectrumIntent"
+    },
+    "space": {
+      "$ref": "#/$defs/SpaceIntent"
+    },
+    "modulation": {
+      "$ref": "#/$defs/ModulationIntent"
+    },
+    "delay": {
+      "$ref": "#/$defs/DelayIntent"
+    },
+    "style": {
+      "$ref": "#/$defs/StyleIntent"
+    },
+    "chain_constraints": {
+      "$ref": "#/$defs/ChainConstraints"
+    },
+    "guitar": {
+      "$ref": "#/$defs/GuitarContext"
+    },
+    "confidence": {
+      "default": 0.5,
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Confidence",
+      "type": "number"
+    }
+  },
+  "required": [
+    "prompt"
+  ],
+  "title": "ToneIntent",
+  "type": "object"
+}

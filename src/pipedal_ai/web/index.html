@@ -11,5 +11,17 @@
     <div class="checks"><label><input id="autoImport" type="checkbox"> importer dans PiPedal</label><label><input id="autoActivate" type="checkbox"> activer la variante équilibrée</label></div>
     <button id="generate">Générer trois variantes</button><p id="message"></p>
   </section>
+  <details class="panel profiles-panel">
+    <summary>Profils de guitare</summary>
+    <div class="profile-grid">
+      <label>Nom<input id="profileName" maxlength="80" placeholder="Strat chevalet"></label>
+      <label>Guitare<input id="profileGuitar" maxlength="120" placeholder="Type Stratocaster"></label>
+      <label>Micro<select id="profilePickup"><option value="unknown">Inconnu</option><option value="single_coil">Simple</option><option value="humbucker">Humbucker</option><option value="p90">P90</option><option value="active">Actif</option><option value="piezo">Piézo</option></select></label>
+      <label>Trim entrée (dB)<input id="profileTrim" type="number" min="-24" max="24" step="0.5" value="0"></label>
+    </div>
+    <label>Notes<input id="profileNotes" maxlength="500" placeholder="Position, volume, interface…"></label>
+    <button id="createProfile" class="secondary">Ajouter le profil</button>
+    <div id="profileList" class="profile-list"></div>
+  </details>
   <section><h2>Travaux</h2><div id="jobs" class="jobs"></div></section>
 </main><script src="/app.js"></script></body></html>

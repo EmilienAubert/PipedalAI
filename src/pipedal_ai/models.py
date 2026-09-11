@@ -89,6 +89,14 @@ class TextPresetJobRequest(StrictModel):
     auto_import: StrictBool = False
     auto_activate: StrictBool = False
 
+    @field_validator("prompt")
+    @classmethod
+    def clean_prompt(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 3:
+            raise ValueError("prompt must contain at least three non-whitespace characters")
+        return value
+
     @model_validator(mode="after")
     def activation_requires_import(self) -> "TextPresetJobRequest":
         if self.auto_activate and not self.auto_import:
@@ -103,11 +111,32 @@ class RTXProposalRequest(StrictModel):
     profile: dict | None = None
     capabilities: dict
 
+    @field_validator("prompt")
+    @classmethod
+    def clean_prompt(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 3:
+            raise ValueError("prompt must contain at least three non-whitespace characters")
+        return value
+
     @field_validator("capabilities")
     @classmethod
     def capability_shape(cls, value: dict) -> dict:
         if value.get("schema_version") != "pipedal-ai.catalog-capabilities/1.0.0":
             raise ValueError("unsupported capability schema")
+        return value
+
+
+class ToneIntentRequest(StrictModel):
+    prompt: str = Field(min_length=3, max_length=2000)
+    profile: dict | None = None
+
+    @field_validator("prompt")
+    @classmethod
+    def clean_prompt(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 3:
+            raise ValueError("prompt must contain at least three non-whitespace characters")
         return value
 
 
@@ -121,4 +150,3 @@ class JobView(StrictModel):
     updated_at: str
     error: str | None = None
     artifacts: list[dict] = Field(default_factory=list)
-

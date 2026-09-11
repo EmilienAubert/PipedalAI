@@ -5,12 +5,17 @@ import json
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 from pathlib import Path
 
 from pipedal_ai.catalog import CatalogService
 from pipedal_ai.compiler import PresetCompiler
+from pipedal_ai.config import load_pi_config
 from pipedal_ai.db import Database
 from pipedal_ai.degraded import DegradedProposer, _choose_asset, _find_plugin, _prompt_tags
+from pipedal_ai.errors import ConfigurationError, ContractError
+from pipedal_ai.models import CatalogRef
+from pipedal_ai.pi.jobs import JobManager
 
 
 def descriptor(uri: str, name: str, controls: list[dict]) -> str:
@@ -52,6 +57,17 @@ class CoreTests(unittest.TestCase):
         encoded = json.dumps(self.catalog.capabilities())
         self.assertNotIn(str(self.root), encoded)
         self.assertNotIn("relative_path", encoded)
+
+    def test_catalog_exposes_only_explicit_asset_metadata(self):
+        with self.db.transaction() as connection:
+            connection.execute(
+                "INSERT INTO asset_metadata VALUES(?,?,?,?,?)",
+                (1, "ast_111111111111111111111111", "tone3000",
+                 json.dumps({"title": "Warm Tweed", "gear": "amp"}), "2026-01-01T00:00:00Z"),
+            )
+        asset = self.catalog.capabilities()["assets"][0]
+        self.assertEqual(asset["metadata"]["tone3000"]["title"], "Warm Tweed")
+        self.assertNotIn("relative_path", asset)
 
     def test_degraded_three_variants_validate(self):
         value = DegradedProposer().propose("req", "warm blues crunch", self.catalog.capabilities())
@@ -104,6 +120,35 @@ class CoreTests(unittest.TestCase):
         value = DegradedProposer().propose("req", "clean", self.catalog.capabilities())
         value.proposals[0].catalog.sha256 = "d" * 64
         with self.assertRaises(Exception): self.catalog.validate_proposal_set(value)
+
+    def test_capability_snapshot_uses_the_job_catalog_not_the_new_active_one(self):
+        frozen = self.catalog.active_ref()
+        with self.db.transaction() as connection:
+            connection.execute(
+                "INSERT INTO catalog_revisions VALUES(2,?,?,?,?,?,?,?,?,?,?)",
+                ("d" * 64, "pipedal-ai.catalog-source/1.0.0", "pipedal-ai.inventory/1.0.0",
+                 "e" * 64, "test", "2026-01-02T00:00:00Z", "2026-01-02T00:00:00Z", 0, 0, 0),
+            )
+            connection.execute("UPDATE catalog_state SET active_revision=2 WHERE singleton=1")
+        snapshot = self.catalog.capabilities(frozen)
+        self.assertEqual(snapshot["catalog"], frozen.model_dump(mode="json"))
+        self.assertEqual(len(snapshot["plugins"]), 3)
+
+    def test_pi_rejects_a_response_for_another_job(self):
+        proposal = DegradedProposer().propose("wrong_job", "clean", self.catalog.capabilities())
+        with self.assertRaises(ContractError):
+            JobManager._validate_correlated(proposal, "expected_job", self.catalog.active_ref())
+
+    def test_non_loopback_pi_requires_api_key(self):
+        config = self.root / "pi.toml"
+        config.write_text(
+            "[server]\nhost='0.0.0.0'\napi_key_env='TEST_MISSING_PI_KEY'\n"
+            "[rtx]\nenabled=false\n[pipedal]\n[storage]\n[policy]\n",
+            encoding="utf-8",
+        )
+        with patch.dict("os.environ", {}, clear=False):
+            with self.assertRaises(ConfigurationError):
+                load_pi_config(config)
 
 
 if __name__ == "__main__": unittest.main()

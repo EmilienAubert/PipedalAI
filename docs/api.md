@@ -34,6 +34,7 @@ Exemple de création :
 | Méthode | Route | Résultat |
 |---|---|---|
 | `GET` | `/api/v1/health` | État service et Ollama |
+| `POST` | `/api/v1/intents/text` | `ToneIntent` strict pour diagnostic |
 | `POST` | `/api/v1/proposals/text` | Un `ProposalSet` strict de trois variantes |
 
 Les schémas publiés sont dans `schemas/api-v1`. Toute évolution incompatible crée `/api/v2` et de nouvelles chaînes `schema_version`; les champs inconnus sont refusés.

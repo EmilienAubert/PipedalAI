@@ -5,13 +5,15 @@ PiPedal AI transforme une description textuelle en trois presets (`conservative`
 ## Ce qui est livré
 
 - monolithe modulaire Pi : API/UI, profils guitare, SQLite, travaux, validation, compilation `.piPreset`, import et activation PiPedal ;
-- service RTX : API v1 authentifiée, appel Ollama en sortie JSON structurée ;
+- service RTX : compréhension `ToneIntent`, présélection déterministe du catalogue puis planification Ollama ;
+- classement borné des plugins/NAM/IR par métadonnées, Tone3000 explicite et empreintes audio locales ;
 - mode local déterministe si la RTX ou le réseau est indisponible ;
 - inventaire/catalogue phase zéro complet ;
 - schémas JSON versionnés, unités systemd, tests et documentation d'exploitation ;
 - compatibilité structurelle testée avec les deux presets de référence fournis.
 
-Le matching audio, la séparation de pistes et l'optimisation par rendu sont volontairement hors de ce MVP.
+Le mode texte complet est la priorité de cette version. La séparation d'une référence audio et
+l'optimisation itérative par rendu viendront après sa recette matérielle.
 
 ## Démarrage rapide
 
@@ -24,6 +26,11 @@ cp config/pi.example.toml config/pi.toml
 export PIPEDAL_AI_API_KEY='une-cle-longue-et-aleatoire'
 export PIPEDAL_AI_RTX_TOKEN='un-autre-secret-long-et-aleatoire'
 ```
+
+L'exemple est volontairement limité à `127.0.0.1`. Pour ouvrir l'interface sur le LAN,
+modifiez `server.host` et réduisez `allowed_cidrs` au réseau ou aux adresses réellement utiles.
+Renseignez également les chemins locaux et l'adresse RTX dans `config/pi.toml` ; ce fichier
+reste non versionné.
 
 Si la base SQLite existante est déjà celle créée en phase zéro, conservez-la et indiquez son chemin dans `config/pi.toml`. Sinon :
 
@@ -64,6 +71,8 @@ En production, utilisez le mTLS décrit dans [Sécurité](docs/security.md), et 
 - [API v1](docs/api.md)
 - [Format PresetSpec et `.piPreset`](docs/preset-format.md)
 - [Fonctionnement du générateur local](docs/generateur-local.md)
+- [Mode texte complet](docs/mode-texte-complet.md)
+- [Jeu de DI de référence](docs/jeu-di-reference.md)
 - [Modèle SQLite et arborescence](docs/data-model.md)
 - [Sécurité et modèle de menace](docs/security.md)
 - [Exploitation et dépannage](docs/operations.md)

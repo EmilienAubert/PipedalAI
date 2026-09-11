@@ -16,4 +16,7 @@ venv/bin/pipedal-ai-rtx --config /etc/pipedal-ai/rtx.toml \
 
 Le pare-feu du PC doit autoriser le port RTX uniquement depuis l'adresse du Pi. Ollama doit rester lié à `127.0.0.1` : il n'a aucune raison d'être exposé au LAN.
 
-La RTX ne stocke pas de chemin Pi, ne télécharge pas d'asset et n'appelle jamais PiPedal. Son unique sortie MVP est un `ProposalSet` JSON.
+La RTX ne stocke pas de chemin Pi, ne télécharge pas d'asset et n'appelle jamais PiPedal.
+Elle extrait un `ToneIntent`, construit une liste courte à partir des identifiants reçus et
+retourne uniquement un `ProposalSet` JSON. La commande locale
+`pipedal-ai-fingerprint --help` prépare un index de rendus WAV sans ouvrir d'API de fichiers.

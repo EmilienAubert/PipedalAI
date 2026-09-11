@@ -7,6 +7,12 @@ bearer_token_env = "PIPEDAL_AI_RTX_TOKEN"
 [ollama]
 base_url = "http://127.0.0.1:11434"
 model = "qwen3:14b"
-timeout_seconds = 120
+timeout_seconds = 90
 temperature = 0.2
+max_retries = 1
+max_plugin_candidates = 24
+max_assets_per_role = 12
 
+[fingerprints]
+enabled = true
+index_path = "./data/fingerprints.json"

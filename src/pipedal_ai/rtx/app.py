@@ -10,8 +10,10 @@ from fastapi import Depends, FastAPI, HTTPException
 from .. import __version__
 from ..config import RTXConfig, load_rtx_config
 from ..errors import RemoteServiceError
-from ..models import ProposalSet, RTXProposalRequest
+from ..intent import ToneIntent
+from ..models import ProposalSet, RTXProposalRequest, ToneIntentRequest
 from ..security import NetworkAndSizeMiddleware, bearer_dependency
+from .fingerprints import FingerprintIndex
 from .ollama import OllamaClient
 
 
@@ -19,11 +21,21 @@ def create_app(config: RTXConfig) -> FastAPI:
     app = FastAPI(title="PiPedal AI RTX", version=__version__, docs_url=None, redoc_url=None)
     app.add_middleware(NetworkAndSizeMiddleware, allowed_cidrs=config.server.allowed_cidrs, max_body_bytes=4 * 1024 * 1024)
     authorize = bearer_dependency(config.server.bearer_token)
-    ollama = OllamaClient(config.ollama)
+    fingerprint_index = FingerprintIndex(config.fingerprints.index_path) if config.fingerprints.enabled else None
+    ollama = OllamaClient(config.ollama, fingerprint_index=fingerprint_index)
+    app.state.ollama = ollama
 
     @app.get("/api/v1/health")
     async def health() -> dict:
-        return {"status": "ok", "ollama": await ollama.health(), "version": __version__}
+        return {"status": "ok", "ollama": await ollama.health(), "version": __version__,
+                "text_pipeline": "intent-shortlist-planner/1.0.0"}
+
+    @app.post("/api/v1/intents/text", response_model=ToneIntent, dependencies=[Depends(authorize)])
+    async def intents(request: ToneIntentRequest) -> ToneIntent:
+        try:
+            return await ollama.extract_intent(request.prompt, request.profile)
+        except RemoteServiceError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     @app.post("/api/v1/proposals/text", response_model=ProposalSet, dependencies=[Depends(authorize)])
     async def proposals(request: RTXProposalRequest) -> ProposalSet:

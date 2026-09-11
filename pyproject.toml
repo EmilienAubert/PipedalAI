@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pipedal-ai"
-version = "0.6.0"
+version = "0.7.0"
 description = "Authoritative PiPedal preset generation orchestrated by Raspberry Pi"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -23,6 +23,7 @@ dev = ["pytest>=8,<10"]
 pipedal-ai = "pipedal_ai.cli:main"
 pipedal-ai-pi = "pipedal_ai.pi.app:main"
 pipedal-ai-rtx = "pipedal_ai.rtx.app:main"
+pipedal-ai-fingerprint = "pipedal_ai.rtx.fingerprint_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -1,0 +1,309 @@
+{
+  "$defs": {
+    "DynamicFeatures": {
+      "additionalProperties": false,
+      "properties": {
+        "crest_factor_db": {
+          "maximum": 120.0,
+          "minimum": 0.0,
+          "title": "Crest Factor Db",
+          "type": "number"
+        },
+        "block_dynamic_range_db": {
+          "maximum": 120.0,
+          "minimum": 0.0,
+          "title": "Block Dynamic Range Db",
+          "type": "number"
+        },
+        "transient_density_hz": {
+          "minimum": 0.0,
+          "title": "Transient Density Hz",
+          "type": "number"
+        },
+        "pick_sensitivity": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Pick Sensitivity",
+          "type": "number"
+        },
+        "compression": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Compression",
+          "type": "number"
+        }
+      },
+      "required": [
+        "crest_factor_db",
+        "block_dynamic_range_db",
+        "transient_density_hz",
+        "pick_sensitivity",
+        "compression"
+      ],
+      "title": "DynamicFeatures",
+      "type": "object"
+    },
+    "SpectralFeatures": {
+      "additionalProperties": false,
+      "description": "Energy ratios; all bands together sum to one for non-silent audio.",
+      "properties": {
+        "sub": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Sub",
+          "type": "number"
+        },
+        "bass": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Bass",
+          "type": "number"
+        },
+        "low_mid": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Low Mid",
+          "type": "number"
+        },
+        "mid": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Mid",
+          "type": "number"
+        },
+        "high_mid": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "High Mid",
+          "type": "number"
+        },
+        "treble": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Treble",
+          "type": "number"
+        },
+        "air": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Air",
+          "type": "number"
+        },
+        "centroid_hz": {
+          "minimum": 0.0,
+          "title": "Centroid Hz",
+          "type": "number"
+        },
+        "brightness": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Brightness",
+          "type": "number"
+        },
+        "high_frequency_fizz": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "High Frequency Fizz",
+          "type": "number"
+        }
+      },
+      "required": [
+        "sub",
+        "bass",
+        "low_mid",
+        "mid",
+        "high_mid",
+        "treble",
+        "air",
+        "centroid_hz",
+        "brightness",
+        "high_frequency_fizz"
+      ],
+      "title": "SpectralFeatures",
+      "type": "object"
+    },
+    "ToneFeatures": {
+      "additionalProperties": false,
+      "description": "Normalized descriptors used by the text-mode nearest-neighbour ranker.",
+      "properties": {
+        "gain": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Gain",
+          "type": "number"
+        },
+        "bass": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Bass",
+          "type": "number"
+        },
+        "mids": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Mids",
+          "type": "number"
+        },
+        "treble": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Treble",
+          "type": "number"
+        },
+        "warmth": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Warmth",
+          "type": "number"
+        },
+        "bass_tightness": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Bass Tightness",
+          "type": "number"
+        },
+        "noise": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Noise",
+          "type": "number"
+        }
+      },
+      "required": [
+        "gain",
+        "bass",
+        "mids",
+        "treble",
+        "warmth",
+        "bass_tightness",
+        "noise"
+      ],
+      "title": "ToneFeatures",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "pipedal-ai.audio-fingerprint/1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "extractor_version": {
+      "const": "stdlib-pcm/1.0.0",
+      "title": "Extractor Version",
+      "type": "string"
+    },
+    "asset_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Asset Sha256",
+      "type": "string"
+    },
+    "audio_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Audio Sha256",
+      "type": "string"
+    },
+    "source_kind": {
+      "enum": [
+        "nam",
+        "cab_ir",
+        "reverb_ir",
+        "render",
+        "reference",
+        "unknown"
+      ],
+      "title": "Source Kind",
+      "type": "string"
+    },
+    "sample_rate_hz": {
+      "maximum": 768000,
+      "minimum": 1,
+      "title": "Sample Rate Hz",
+      "type": "integer"
+    },
+    "channels": {
+      "maximum": 2,
+      "minimum": 1,
+      "title": "Channels",
+      "type": "integer"
+    },
+    "sample_width_bytes": {
+      "maximum": 4,
+      "minimum": 1,
+      "title": "Sample Width Bytes",
+      "type": "integer"
+    },
+    "frame_count": {
+      "minimum": 1,
+      "title": "Frame Count",
+      "type": "integer"
+    },
+    "duration_seconds": {
+      "exclusiveMinimum": 0.0,
+      "title": "Duration Seconds",
+      "type": "number"
+    },
+    "rms_dbfs": {
+      "maximum": 0.0,
+      "minimum": -120.0,
+      "title": "Rms Dbfs",
+      "type": "number"
+    },
+    "peak_dbfs": {
+      "maximum": 0.0,
+      "minimum": -120.0,
+      "title": "Peak Dbfs",
+      "type": "number"
+    },
+    "clipped_sample_ratio": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Clipped Sample Ratio",
+      "type": "number"
+    },
+    "silence_ratio": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Silence Ratio",
+      "type": "number"
+    },
+    "zero_crossing_rate": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Zero Crossing Rate",
+      "type": "number"
+    },
+    "spectral": {
+      "$ref": "#/$defs/SpectralFeatures"
+    },
+    "dynamics": {
+      "$ref": "#/$defs/DynamicFeatures"
+    },
+    "tone": {
+      "$ref": "#/$defs/ToneFeatures"
+    }
+  },
+  "required": [
+    "schema_version",
+    "extractor_version",
+    "asset_sha256",
+    "audio_sha256",
+    "source_kind",
+    "sample_rate_hz",
+    "channels",
+    "sample_width_bytes",
+    "frame_count",
+    "duration_seconds",
+    "rms_dbfs",
+    "peak_dbfs",
+    "clipped_sample_ratio",
+    "silence_ratio",
+    "zero_crossing_rate",
+    "spectral",
+    "dynamics",
+    "tone"
+  ],
+  "title": "AudioFingerprint",
+  "type": "object"
+}
