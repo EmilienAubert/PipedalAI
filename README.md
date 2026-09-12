@@ -64,6 +64,7 @@ En production, utilisez le mTLS décrit dans [Sécurité](docs/security.md), et 
 
 ## Documentation
 
+- [Correctif planificateur et installation Pi/Windows — v0.7.4](docs/mise-a-jour-v074.md)
 - [Mise à jour propre Pi/Windows et diagnostic RTX — v0.7.3](docs/mise-a-jour-v073.md)
 - [Architecture et frontières d'autorité](docs/architecture.md)
 - [Installation sur le Pi](docs/installation-pi.md)

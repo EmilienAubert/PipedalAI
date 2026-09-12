@@ -7,6 +7,8 @@ from collections.abc import Callable, Mapping
 from typing import TypeVar
 
 import httpx
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError as SchemaValidationError
 from pydantic import BaseModel, ValidationError
 
 from ..config import OllamaConfig
@@ -16,7 +18,7 @@ from ..models import PlanDraft, PresetSpec, ProposalSet, RTXProposalRequest
 from .retrieval import CandidateRetriever, _plugin_effect_roles
 from .fingerprints import FingerprintIndex
 from .diagnostics import save_exchange
-from .ollama_schema import generation_schema
+from .ollama_schema import generation_schema, planning_schema
 
 
 logger = logging.getLogger(__name__)
@@ -28,6 +30,9 @@ Return JSON only, matching the supplied schema. Do not choose plugins, NAM model
 Interpret subjective words musically, preserve explicit negations, and use conservative
 assumptions when information is missing. Values are normalized perceptual targets.
 Copy the original prompt exactly. Never emit paths, URLs, commands or extra fields.
+Do not invent mandatory chain roles: required_roles lists only explicitly requested
+effects, not a default amp/cab/input/output recipe. Unknown NAM capture types may
+not support adding a cabinet. A preference is not a hard requirement.
 """
 
 PLANNER_SYSTEM_PROMPT = """You are the preset planning engine for PiPedal AI.
@@ -43,6 +48,11 @@ plugin. Prefer safe gain staging, useful musical differences and short chains.
 Add a cabinet IR after a NAM only when its metadata explicitly says it is an
 amp-only capture; for unknown or amp-cab captures, do not add another cabinet.
 Descriptions must briefly explain the important musical choices in French.
+All three variants must stay close to the requested genre, gain and dynamics.
+Bold means a modest variation of that same target, NOT a switch to metal/high gain.
+Do not invent a compressor or use an amplifier as a file loader. The plugin names,
+exact parameter symbols, and resource_roles identify their actual functions.
+Use at most one NAM and one cabinet IR in this serial MVP; never stack cabinets.
 """
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -87,6 +97,8 @@ class OllamaClient:
         intent = await self.extract_intent(request.prompt, request.profile)
         capabilities = self._with_fingerprints(request.capabilities)
         shortlist = self.retriever.retrieve(intent, request.prompt, capabilities)
+        if not shortlist.get("plugins"):
+            raise RemoteServiceError("Aucun plugin disponible pour cette intention.")
         payload = {
             "request_id": request.request_id,
             "catalog": request.capabilities["catalog"],
@@ -148,20 +160,10 @@ class OllamaClient:
         previous_content = ""
         schema = generation_schema(model_type)
         if model_type is PlanDraft:
-            schema["properties"]["request_id"] = {"type": "string", "enum": [payload["request_id"]]}
-            schema["properties"]["catalog"]["properties"]["revision"] = {
-                "type": "integer", "enum": [payload["catalog"]["revision"]],
-            }
-            schema["properties"]["catalog"]["properties"]["sha256"] = {
-                "type": "string", "enum": [payload["catalog"]["sha256"]],
-            }
-            step_properties = schema["properties"]["variants"]["items"]["properties"]["chain"]["items"]["properties"]
-            plugin_ids = [item["plugin_id"] for item in payload["candidate_shortlist"]["plugins"]]
-            if plugin_ids:
-                step_properties["plugin_id"]["enum"] = plugin_ids
-            asset_ids = [item["asset_id"] for item in payload["candidate_shortlist"]["assets"]]
-            if asset_ids:
-                step_properties["resources"]["items"]["properties"]["asset_id"]["enum"] = asset_ids
+            try:
+                schema = planning_schema(payload)
+            except ValueError as exc:
+                raise RemoteServiceError(f"Schéma de planification impossible : {exc}") from exc
         elif model_type is ToneIntent:
             schema["properties"]["prompt"] = {"type": "string", "enum": [payload["prompt"]]}
         stage = "plan" if model_type is PlanDraft else "intent"
@@ -170,7 +172,8 @@ class OllamaClient:
                          "\nOutput JSON schema:\n" + json.dumps(schema, ensure_ascii=False, separators=(",", ":"))}]
             user_content = ("Generate the requested " + model_type.__name__ +
                             " now, using the following input data. Do not summarize this data.\n" +
-                            json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+                            json.dumps(_prompt_payload(payload) if model_type is PlanDraft else payload,
+                                       ensure_ascii=False, separators=(",", ":")))
             messages.append({"role": "user", "content": user_content})
             if correction:
                 if previous_content:
@@ -206,6 +209,8 @@ class OllamaClient:
                 value = model_type.model_validate_json(content)
                 if validate:
                     validate(value)
+                if model_type is PlanDraft:
+                    Draft202012Validator(schema).validate(json.loads(content))
                 save_exchange(self.config.diagnostics_directory, stage, attempt, body,
                               response.text, response.status_code, None)
                 return value
@@ -219,10 +224,13 @@ class OllamaClient:
                 raise RemoteServiceError(
                     f"Ollama étape={stage} HTTP {exc.response.status_code} : {detail}"
                 ) from exc
-            except (httpx.HTTPError, KeyError, TypeError, ValueError, ValidationError) as exc:
+            except (httpx.HTTPError, KeyError, TypeError, ValueError, ValidationError, SchemaValidationError) as exc:
                 last_error = exc
                 # Pydantic input values may contain private catalogue/prompt data.
-                if isinstance(exc, ValidationError):
+                if isinstance(exc, SchemaValidationError):
+                    correction = (f"Contrat catalogue : chemin={list(exc.absolute_path)}, "
+                                  f"contrainte={exc.validator}. Respecter exactement le schéma fourni.")[:1800]
+                elif isinstance(exc, ValidationError):
                     errors = exc.errors(include_input=False, include_url=False, include_context=False)
                     correction = json.dumps(errors, ensure_ascii=False)[:1800]
                 else:
@@ -286,7 +294,10 @@ class OllamaClient:
                 for symbol, value in step.parameters.items():
                     control = controls.get(symbol)
                     if control is None:
-                        raise ValueError(f"Paramètre hors liste courte : {step.plugin_id}/{symbol}")
+                        raise ValueError(
+                            f"Paramètre hors liste courte : {step.plugin_id}/{symbol}. "
+                            f"Plugin={plugin.get('name')}; symboles autorisés={sorted(controls)}"
+                        )
                     _validate_control_value(step.plugin_id, control, value)
 
                 required_roles = set(plugin.get("resource_roles", []))
@@ -308,6 +319,11 @@ class OllamaClient:
                 for step in preset.chain
                 for role in _plugin_effect_roles(plugins[step.plugin_id])
             }
+            if len(nam_steps := [step for step in preset.chain if any(r.role == "nam_model" for r in step.resources)]) > 1:
+                raise ValueError("Un seul NAM autorisé par chaîne série dans ce MVP.")
+            cabinets = [step for step in preset.chain if "cabinet" in _plugin_effect_roles(plugins[step.plugin_id])]
+            if len(cabinets) > 1:
+                raise ValueError("Un seul cabinet autorisé par chaîne série dans ce MVP.")
             missing_roles = set(intent.chain_constraints.required_roles) - present_roles
             if missing_roles:
                 raise ValueError(f"Rôles obligatoires absents : {sorted(missing_roles)}")
@@ -323,6 +339,10 @@ class OllamaClient:
             )
             if has_cabinet_ir and any(_capture_type(asset) != "amp" for asset in nam_assets):
                 raise ValueError("Une IR de cabinet exige un NAM explicitement marqué amp-only.")
+            if cabinets and nam_assets and any(_capture_type(asset) != "amp" for asset in nam_assets):
+                raise ValueError("Un cabinet après un NAM exige une capture explicitement amp-only.")
+            if cabinets and nam_steps and preset.chain.index(cabinets[0]) < preset.chain.index(nam_steps[0]):
+                raise ValueError("Le cabinet doit être placé après le NAM.")
 
 
 def _planning_context(shortlist: Mapping) -> dict:
@@ -336,6 +356,25 @@ def _planning_context(shortlist: Mapping) -> dict:
         "assets": [{key: value for key, value in item.items() if key in asset_keys}
                    for item in shortlist.get("assets", [])],
     }
+
+
+def _prompt_payload(payload: Mapping) -> dict:
+    """Constraints are already in the schema; avoid repeating full LV2 descriptors."""
+    result = copy.deepcopy(dict(payload))
+    plugins = result["candidate_shortlist"]["plugins"]
+    for plugin in plugins:
+        plugin["effect_roles"] = sorted(_plugin_effect_roles(plugin))
+        plugin.pop("controls", None)
+        plugin.pop("uri", None)
+    for asset in result["candidate_shortlist"]["assets"]:
+        # Audio features have already contributed to retrieval; keep concise reasons.
+        asset.pop("audio_fingerprint", None)
+        metadata = asset.pop("metadata", None)
+        asset["capture_type"] = _capture_type({**asset, "metadata": metadata})
+        if isinstance(metadata, Mapping) and isinstance(metadata.get("tone3000"), Mapping):
+            info = metadata["tone3000"]
+            asset["tone3000"] = {key: str(info[key])[:240] for key in ("title", "gear", "description") if info.get(key)}
+    return result
 
 
 def _validate_control_value(plugin_id: str, control: Mapping, value: object) -> None:

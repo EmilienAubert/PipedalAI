@@ -124,7 +124,7 @@ class OllamaPipelineTests(unittest.TestCase):
         self.assertNotIn("selection", second_payload["candidate_shortlist"])
         self.assertFalse(bodies[0]["think"])
         self.assertEqual(bodies[1]["format"]["required"], ["schema_version", "request_id", "catalog", "variants"])
-        self.assertNotIn("$defs", bodies[1]["format"])
+        self.assertEqual(bodies[1]["format"]["$defs"]["chain"]["maxItems"], 8)
         self.assertIn('"variants"', bodies[1]["messages"][0]["content"])
         self.assertEqual(value.schema_version, "pipedal-ai.proposal-set/1.0.0")
 
