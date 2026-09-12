@@ -16,14 +16,15 @@ from pipedal_ai.config import BenchConfig
 from pipedal_ai.degraded import DegradedProposer
 from pipedal_ai.errors import ContractError, RemoteServiceError
 from pipedal_ai.knowledge import TOOB
-from pipedal_ai.pi.renderer import PiPedalRenderer, process_lock, shared_bench_file
+from pipedal_ai.pi.renderer import PiPedalRenderer, process_lock, recording_path, shared_bench_file
 
 
 class FakePiPedal:
-    def __init__(self, data, failure=None):
+    def __init__(self, data, failure=None, record_root=None):
         self.previous={'name':'Unsaved live board','items':[{'instanceId':1,'uri':'user-plugin','controlValues':[{'key':'gain','value':.3}]}],
                        'input_volume_db':-4,'output_volume_db':-7}
         self.board=deepcopy(self.previous);self.data=data;self.failure=failure;self.requests=[];self.status_calls=0
+        self.record_root=record_root;self.recorded=None;self.patch_calls=0
     def connection(self,*args,**kwargs):return self
     async def __aenter__(self):return self
     async def __aexit__(self,*args):pass
@@ -37,11 +38,19 @@ class FakePiPedal:
             raise RemoteServiceError('Connection lost')
         if header['message']=='setControl' and body['symbol']=='stop' and body['instanceId']>1:
             rec=self.board['items'][-1]
-            path=next(iter(rec['lv2State'][1].values()))['value']
-            if not Path(path).exists():write_pcm(Path(path),self.data*.8)
+            if rec['uri'] in (TOOB+'record-mono',TOOB+'record-stereo') and self.recorded is None and self.failure!='timeout':
+                assert rec['lv2State']==[False,{}], 'Recorder cannot accept an output filename'
+                self.recorded=self.record_root/('rec-'+self.board['name'].split()[-1]+'.wav')
+                write_pcm(self.recorded,self.data*.8)
     async def request(self,ws,message,body=None,sequence=1):
         self.requests.append(message)
         if message=='currentPedalboard':return deepcopy(self.board)
+        if message=='getPatchProperty':
+            self.patch_calls+=1
+            assert body['instanceId']==self.board['items'][-1]['instanceId']
+            assert body['propertyUri']==TOOB+'record#audioFile'
+            pending=self.failure=='pending' and self.patch_calls<3
+            return {'otype_':'Path','value':str(self.recorded) if self.recorded is not None and not pending else ''}
         if message=='getJackStatus':
             self.status_calls+=1
             if self.status_calls==2 and self.failure=='user':self.board=deepcopy(self.previous);self.board['name']='User selected another'
@@ -66,7 +75,7 @@ class RendererTests(unittest.TestCase):
         for directory in (self.config.track_directory,self.config.record_directory):
             (self.root/'uploads'/directory/'PiPedalAI').mkdir(parents=True)
     def run_render(self,failure=None):
-        fake=FakePiPedal(signal(),failure)
+        fake=FakePiPedal(signal(),failure,self.root/'uploads'/self.config.record_directory)
         client=Mock();client.config.websocket_url='ws://local.test/pipedal';client._request=fake.request
         renderer=PiPedalRenderer(self.catalog,PresetCompiler(self.catalog,self.root/'uploads',1000000),client,self.config,Mock())
         moments=[0,99] if failure not in ('xrun','user') else [0,0,0,99]
@@ -106,7 +115,7 @@ class RendererTests(unittest.TestCase):
         self.assertFalse(root.exists())
 
     def test_missing_shared_directory_refuses_before_changing_live_board(self):
-        (self.root/'uploads'/self.config.record_directory/'PiPedalAI').rmdir()
+        (self.root/'uploads'/self.config.track_directory/'PiPedalAI').rmdir()
         fake,result=self.run_render()
         self.assertIsInstance(result,ContractError)
         self.assertIn('Dossier partagé',str(result))
@@ -119,6 +128,30 @@ class RendererTests(unittest.TestCase):
         self.assertIsInstance(result,ContractError)
         self.assertIn('Droits insuffisants',str(result))
         self.assertEqual(fake.requests,[])
+
+    def test_generated_recording_name_is_used_after_async_finalization(self):
+        fake,result=self.run_render('pending')
+        self.assertIsInstance(result,dict,result)
+        self.assertEqual(fake.patch_calls,3)
+        self.assertEqual(fake.recorded.parent,self.root/'uploads'/self.config.record_directory)
+        self.assertEqual(fake.board,fake.previous)
+
+    def test_missing_recorder_completion_times_out_and_restores(self):
+        fake,result=self.run_render('timeout')
+        self.assertIsInstance(result,RemoteServiceError)
+        self.assertIn("n'a pas publié",str(result))
+        self.assertEqual(fake.patch_calls,60)
+        self.assertEqual(fake.board,fake.previous)
+
+    def test_recorder_cannot_return_old_or_outside_audio(self):
+        upload=self.root/'uploads'
+        path=upload/self.config.record_directory/'rec-existing.wav';write_pcm(path,signal())
+        value={'otype_':'Path','value':str(path)}
+        with self.assertRaisesRegex(ContractError,'ancien enregistrement'):
+            recording_path(upload,self.config.record_directory,value,{path.name})
+        outside=upload/'rec-outside.wav';write_pcm(outside,signal())
+        with self.assertRaisesRegex(ContractError,'hors du dossier'):
+            recording_path(upload,self.config.record_directory,{'otype_':'Path','value':str(outside)},set())
 
     @unittest.skipUnless(sys.platform.startswith('linux'),'Permissions POSIX : Linux uniquement')
     def test_playback_copy_group_readable_but_source_and_result_stay_private(self):

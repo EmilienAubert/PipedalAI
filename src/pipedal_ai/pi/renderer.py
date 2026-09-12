@@ -35,6 +35,28 @@ def shared_bench_file(upload_root, relative):
     return path
 
 
+def recording_path(upload_root, directory, value, previous_files):
+    """Validate the recorder's completed output, never search for a substitute."""
+    if not isinstance(value, dict) or value.get("otype_") != "Path" or not isinstance(value.get("value"), str):
+        raise ContractError("Chemin d'enregistrement PiPedal invalide")
+    if not value["value"]:
+        return None
+    reported = Path(value["value"])
+    try:
+        relative = reported.relative_to(upload_root.absolute()).as_posix() if reported.is_absolute() else reported.as_posix()
+        path = safe_path(upload_root, relative)
+        expected = safe_path(upload_root, directory + "/.bench-path-check", exists=False).parent
+    except (ValueError, OSError) as exc:
+        raise ContractError("Enregistrement PiPedal absent, lié ou hors du dossier autorisé") from exc
+    if path.parent != expected or not path.name.startswith("rec-") or path.suffix.lower() != ".wav":
+        raise ContractError("Enregistrement PiPedal hors du dossier ou format autorisé")
+    if path.name in previous_files:
+        raise ContractError("PiPedal a renvoyé un ancien enregistrement")
+    if not os.access(path, os.R_OK):
+        raise ContractError("Enregistrement PiPedal non lisible par le compte AI : " + str(path))
+    return path
+
+
 @contextmanager
 def process_lock(root):
     """A Pi-local lock shared by CLI and web service processes."""
@@ -154,9 +176,11 @@ class PiPedalRenderer:
             raise ContractError("TooB File Player / Record Input absent du catalogue")
         upload_root = self.compiler.upload_root
         track_relative = f"{self.config.track_directory}/PiPedalAI/{token}.wav"
-        record_relative = f"{self.config.record_directory}/PiPedalAI/{token}.wav"
         track = shared_bench_file(upload_root, track_relative)
-        recorded = shared_bench_file(upload_root, record_relative)
+        record_root = safe_path(upload_root, self.config.record_directory + "/.bench-path-check", exists=False).parent
+        if not record_root.is_dir() or not os.access(record_root, os.R_OK | os.X_OK):
+            raise ContractError("Dossier d'enregistrement PiPedal absent ou non lisible : " + str(record_root))
+        previous_files = {p.name for p in record_root.glob("rec-*.wav")}
         # The prepared setgid folder supplies PiPedal's group. Only this playback
         # copy is group-readable; managed DI, previews and journals stay private.
         write_pcm(track, data, rate, group_readable=True)
@@ -181,7 +205,12 @@ class PiPedalRenderer:
         recorder_id = len(board["items"]) + 2
         recorder = utility_item(utilities[record_uri], recorder_id,
                                 {"record": 0, "fformat": 0, "level": 0},
-                                TOOB + "record#audioFile", recorded)
+                                TOOB + "record#audioFile", "")
+        # audioFile selects an existing take. StartRecording always generates a
+        # new rec-* filename in the host's audiorecording directory.
+        recorder["lv2State"] = [False, {}]
+        recorder["pathProperties"] = {}
+        recorder["stateUpdateCount"] = 0
         board["items"] = [player, *board["items"], recorder]
         board["nextInstanceId"] = recorder_id + 1
         board["name"] = "PiPedal AI bench " + token
@@ -247,8 +276,33 @@ class PiPedalRenderer:
                             raise ContractError("Catalogue modifié pendant le rendu")
                     await control(player_id, "stop", 1)
                     await control(recorder_id, "stop", 1)
-                    await request("currentPedalboard")
-                    await asyncio.sleep(0.3)
+                    recorded = None
+                    finish_deadline = asyncio.get_running_loop().time() + 15
+                    for _ in range(60):
+                        remaining = finish_deadline - asyncio.get_running_loop().time()
+                        if remaining <= 0:
+                            break
+                        try:
+                            current = await asyncio.wait_for(request("currentPedalboard"), remaining)
+                        except TimeoutError:
+                            break
+                        if current.get("name") != board["name"]:
+                            raise ContractError("Banc interrompu par un changement utilisateur")
+                        verify_bench(board, current)
+                        remaining = finish_deadline - asyncio.get_running_loop().time()
+                        if remaining <= 0:
+                            break
+                        try:
+                            value = await asyncio.wait_for(request("getPatchProperty", {
+                                "instanceId": recorder_id, "propertyUri": TOOB + "record#audioFile"}), remaining)
+                        except TimeoutError:
+                            break
+                        recorded = recording_path(upload_root, self.config.record_directory, value, previous_files)
+                        if recorded is not None:
+                            break
+                        await asyncio.sleep(0.25)
+                    if recorded is None:
+                        raise RemoteServiceError("TooB Record Input n'a pas publié de nouvel enregistrement après l'arrêt (15 s)")
                 finally:
                     # Also restore if the original websocket fails, using a new local
                     # connection. Never replace a different user-selected board.
