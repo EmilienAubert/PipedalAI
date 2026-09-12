@@ -151,6 +151,25 @@ def _numeric_leaves(value: object, result: dict[str, float] | None = None) -> di
 
 
 def _fingerprint_score(intent: ToneIntent, asset: Mapping[str, Any]) -> tuple[float, list[str]]:
+    metadata = asset.get("metadata") or {}
+    profiles = (metadata.get("characterization") or {}).get("profiles", {})
+    measured = []
+    for profile in profiles.values():
+        context = profile.get("context", {})
+        if context.get("nam_sha256") != asset.get("sha256"):
+            continue
+        # Amp-only measurements include a cabinet: score only full-rig profiles
+        # until the planner can jointly rank the identical NAM/IR pair.
+        if context.get("associated_cab_ir_id"):
+            continue
+        try:
+            from .audio_analysis import score_features
+            measured.append(score_features(profile["features"], intent)["total"])
+        except (KeyError, TypeError, ValueError):
+            continue
+    if measured:
+        similarity = max(0.0, 1.0 - min(sum(measured) / len(measured), 1.0))
+        return 24.0 * similarity, ["DI/rendu appariés: indices contextuels, pas une signature universelle"]
     fingerprint = asset.get("fingerprint") or asset.get("audio_fingerprint")
     if not isinstance(fingerprint, Mapping):
         return 0.0, []
@@ -200,6 +219,10 @@ def _plugin_text(plugin: Mapping[str, Any]) -> str:
 
 
 def _plugin_effect_roles(plugin: Mapping[str, Any]) -> set[str]:
+    from ..knowledge import plugin_knowledge
+    known = plugin_knowledge(plugin)
+    if known["role"]:
+        return {known["role"]}
     text = _normalize(_plugin_text(plugin))
     roles: set[str] = set()
     resource_roles = set(plugin.get("resource_roles", []))
@@ -235,6 +258,8 @@ def _asset_text(asset: Mapping[str, Any]) -> str:
         ("display_name", "description", "tags", "makes", "gear", "capture_type", "architecture"),
     )
     metadata = asset.get("metadata")
+    if isinstance(metadata, Mapping) and isinstance(metadata.get("nam_file"), Mapping):
+        text += " " + _text_fields(metadata["nam_file"], ("name", "gear_make", "gear_model", "tone_type", "gear_type"))
     if isinstance(metadata, Mapping) and isinstance(metadata.get("tone3000"), Mapping):
         text += " " + _text_fields(
             metadata["tone3000"],
@@ -302,7 +327,8 @@ class CandidateRetriever:
         if allow_cab_ir:
             desired_roles.add("cabinet")
         gain_payload = intent_payload.get("gain", {})
-        if isinstance(gain_payload, Mapping) and gain_payload.get("character") not in {None, "clean"}:
+        from ..knowledge import permits_extra_drive
+        if permits_extra_drive(intent, prompt):
             desired_roles.add("drive")
         dynamics_payload = intent_payload.get("dynamics", {})
         if isinstance(dynamics_payload, Mapping) and float(dynamics_payload.get("compression", 0.0)) >= 0.45:
@@ -408,7 +434,10 @@ class CandidateRetriever:
             asset = dict(raw)
             semantic, reasons = _semantic_score(query, _asset_text(asset))
             fingerprint, fingerprint_reasons = _fingerprint_score(intent, asset)
-            score = semantic + fingerprint
+            preference = float(asset.get("user_preference_score", 0))
+            score = semantic + fingerprint + max(-8.0, min(8.0, preference))
+            if preference:
+                reasons.append("préférence enregistrée pour ce profil de guitare et ce fichier")
             grouped_assets[role].append((score, [*reasons, *fingerprint_reasons], asset))
 
         selected_assets: list[dict[str, Any]] = []

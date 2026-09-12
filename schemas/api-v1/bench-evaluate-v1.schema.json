@@ -1,0 +1,44 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "job_id": {
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "set_id": {
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "title": "Set Id",
+      "type": "string"
+    },
+    "di_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Di Id"
+    },
+    "maintenance_confirmed": {
+      "default": false,
+      "title": "Maintenance Confirmed",
+      "type": "boolean"
+    },
+    "optimize": {
+      "default": true,
+      "title": "Optimize",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "job_id",
+    "set_id"
+  ],
+  "title": "EvaluateRequest",
+  "type": "object"
+}

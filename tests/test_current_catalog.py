@@ -64,7 +64,7 @@ class CurrentCatalogIntegrationTests(unittest.TestCase):
 
             async def run():
                 async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-                    return await OllamaClient(OllamaConfig("http://ollama.test", "mock", 10, 0), client).propose(
+                    return await OllamaClient(OllamaConfig("http://ollama.test", "mock", 10, 0, planning_mode="raw", num_ctx=65536), client).propose(
                         RTXProposalRequest(schema_version="pipedal-ai.rtx-request/1.0.0",
                                            request_id="catalog_integration", prompt=prompt, capabilities=capabilities))
 

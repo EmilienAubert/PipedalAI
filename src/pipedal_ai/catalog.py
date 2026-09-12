@@ -90,14 +90,30 @@ class CatalogService:
                         "controls": controls,
                     }
                 )
+                from .knowledge import plugin_knowledge
+                plugins[-1]["knowledge"] = plugin_knowledge(plugins[-1])
             metadata_by_asset: dict[str, dict[str, Any]] = {}
             for metadata_row in connection.execute(
                 "SELECT asset_id,source,metadata_json FROM asset_metadata WHERE revision=? ORDER BY asset_id,source",
                 (revision["revision"],),
             ):
-                metadata_by_asset.setdefault(metadata_row["asset_id"], {})[metadata_row["source"]] = json.loads(
-                    metadata_row["metadata_json"]
-                )
+                metadata = json.loads(metadata_row["metadata_json"])
+                if metadata_row["source"] == "characterization":
+                    # Render journals and local paths stay on the Pi. The RTX
+                    # needs compact vectors and their valid measurement context.
+                    nam_host = next((p for p in plugins if p["uri"] == "http://two-play.com/plugins/toob-nam"), None)
+                    profiles = {}
+                    for key, profile in metadata.get("profiles", {}).items():
+                        context = profile.get("context", {})
+                        if not nam_host or context.get("plugin_descriptor_sha256") != nam_host["descriptor_sha256"]:
+                            continue
+                        safe_context = {k: context.get(k) for k in ("source_di_sha256", "di_set_id", "sample_rate_hz", "nam_sha256",
+                            "associated_cab_ir_id", "associated_cab_ir_sha256", "renderer_version", "analysis_version", "plugin_descriptor_sha256", "parameters")}
+                        profiles[key] = {"features": profile["features"], "context": safe_context,
+                                         "level_response_slope": profile.get("level_response_slope"),
+                                         "confidence": profile.get("confidence"), "limitations": profile.get("limitations")}
+                    metadata = {"profiles": profiles}
+                metadata_by_asset.setdefault(metadata_row["asset_id"], {})[metadata_row["source"]] = metadata
             assets = []
             for row in connection.execute(
                 "SELECT * FROM catalog_assets WHERE revision=? ORDER BY asset_id",
@@ -113,6 +129,8 @@ class CatalogService:
                 }
                 if row["asset_id"] in metadata_by_asset:
                     asset["metadata"] = metadata_by_asset[row["asset_id"]]
+                from .asset_metadata import capture_info
+                asset.update(capture_info(asset))
                 assets.append(asset)
         payload = {
             "schema_version": CAPABILITY_SCHEMA_VERSION,
@@ -131,6 +149,35 @@ class CatalogService:
             raise ContractError("Le ProposalSet référence un catalogue périmé.")
         for proposal in value.proposals:
             self.validate_preset(proposal)
+        if value.decision_report.get("musical_plan"):
+            from .rtx.musical import validate_musical_set
+            from .intent import ToneIntent
+            capabilities = self.capabilities()
+            from .knowledge import KNOWLEDGE_VERSION
+            if value.decision_report.get("knowledge_version") != KNOWLEDGE_VERSION:
+                raise ContractError("Version des connaissances musicales incompatible")
+            if value.decision_report.get("capability_sha256") != capabilities["capability_sha256"]:
+                raise ContractError("Les connaissances/métadonnées ont changé pendant le travail.")
+            try:
+                intent = ToneIntent.model_validate(value.decision_report["tone_intent"])
+                validate_musical_set(value, capabilities, intent, value.decision_report.get("prompt", ""))
+                from .knowledge import adapt_parameters
+                profile = None
+                profile_id = value.decision_report.get("profile_id")
+                if profile_id:
+                    with self.database.connect() as c:
+                        row = c.execute("SELECT p.*,c.nam_input_calibration_dbu FROM guitar_profiles p LEFT JOIN guitar_calibrations c USING(profile_id) WHERE p.profile_id=?", (profile_id,)).fetchone()
+                    if row is None:
+                        raise ValueError("Profil musical inconnu")
+                    profile = dict(row)
+                plugins = {p["plugin_id"]: p for p in capabilities["plugins"]}
+                for spec in value.proposals:
+                    for step in spec.chain:
+                        expected = adapt_parameters(plugins[step.plugin_id], intent, spec.variant, profile)
+                        if step.parameters != expected:
+                            raise ValueError("Paramètres différents des adaptateurs déterministes du Pi")
+            except (ValueError, KeyError, TypeError) as exc:
+                raise ContractError(str(exc)) from exc
 
     def validate_preset(self, spec: PresetSpec) -> None:
         active = self.active_ref()

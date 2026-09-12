@@ -52,6 +52,8 @@ class PiPedalClient:
         while True:
             incoming = json.loads(await asyncio.wait_for(websocket.recv(), timeout=10))
             if isinstance(incoming, list) and incoming and incoming[0].get("reply") == sequence:
+                if incoming[0].get("message") == "error":
+                    raise RemoteServiceError(str(incoming[1] if len(incoming) > 1 else "PiPedal error"))
                 if len(incoming) > 1:
                     return incoming[1]
                 return None

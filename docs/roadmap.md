@@ -1,4 +1,13 @@
-# Limites et feuille de route
+# Limites et feuille de route — 0.8.0
+
+Livré depuis cette version : plan musical compact, réglages vérifiés, extraction
+NAM/IR locale, calibration technique par profil, banc maintenance, mesures à
+plusieurs niveaux, cache contextuel, optimisation bornée, préécoutes et retours
+explicites. La recette physique reste nécessaire avant une longue indexation.
+Le mode référence audio, la séparation de guitare, les embeddings appris et
+l'optimisation conjointe exhaustive des paires NAM/IR ne sont pas livrés.
+
+Les points ci-dessous décrivent l'état historique et les développements suivants.
 
 ## MVP actuel
 

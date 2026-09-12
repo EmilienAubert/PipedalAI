@@ -193,7 +193,7 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(row["status"], "completed")
             self.assertEqual(row["prompt"], job.prompt)
             self.assertIsNone(row["fallback_reason"])
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 4)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 5)
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0], 3)
 
     def test_http_job_creation_runs_on_event_loop_and_finishes_with_rtx_source(self):

@@ -1,0 +1,37 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "job_id": {
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "variant": {
+      "enum": [
+        "conservative",
+        "balanced",
+        "bold"
+      ],
+      "title": "Variant",
+      "type": "string"
+    },
+    "label": {
+      "enum": [
+        "preferred",
+        "too_saturated",
+        "too_bright",
+        "too_dark",
+        "noisy"
+      ],
+      "title": "Label",
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "variant",
+    "label"
+  ],
+  "title": "Feedback",
+  "type": "object"
+}

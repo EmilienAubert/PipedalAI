@@ -273,7 +273,12 @@ def validate_preset_spec(
 
 
 def validate_proposal_set(connection: sqlite3.Connection, proposal_set: dict[str, Any]) -> None:
-    exact_keys(proposal_set, {"schema_version", "request_id", "catalog", "proposals"}, "ProposalSet")
+    require(isinstance(proposal_set, dict), "ProposalSet doit être un objet")
+    expected = {"schema_version", "request_id", "catalog", "proposals"}
+    if "decision_report" in proposal_set:
+        require(isinstance(proposal_set["decision_report"], dict), "decision_report doit être un objet")
+        expected.add("decision_report")
+    exact_keys(proposal_set, expected, "ProposalSet")
     require(proposal_set["schema_version"] == PROPOSAL_SCHEMA_VERSION, "Version de ProposalSet refusée.")
     require(isinstance(proposal_set["request_id"], str) and ID_PATTERN.fullmatch(proposal_set["request_id"]) is not None, "request_id invalide.")
     active = active_catalog(connection)

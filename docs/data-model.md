@@ -2,7 +2,8 @@
 
 ## SQLite
 
-Le schéma catalogue de phase zéro est conservé ; l'application le migre de `user_version=1` à `2` sans modifier les révisions.
+Le schéma catalogue de phase zéro est conservé ; l'application migre les versions
+1 à 4 vers `user_version=5` sans modifier les révisions ni les données existantes.
 
 ```mermaid
 erDiagram
@@ -24,6 +25,12 @@ erDiagram
 | `guitar_profiles` | `profile_id` | Guitare, micro et calibration d'entrée |
 | `jobs` | `job_id` | Requête, catalogue figé, état, source et proposition |
 | `artifacts` | `artifact_id` | Variante, fichier, hash, import et activation |
+| `asset_metadata` | `(revision,asset_id,source)` | Tone3000, métadonnées NAM/IR et profils mesurés avec contexte |
+| `guitar_calibrations` | `profile_id` | Valeur NAM technique mesurée, distincte du trim musical |
+| `di_sets` | `set_id` | Manifeste validé, hashes audio et emplacement privé |
+| `bench_sessions` | `session_id` | Catalogue figé, travail/DI, état, rapport et erreur |
+| `bench_candidates` | `candidate_id` | Spec exactement rendue, hashes, mesures, runtime et preview |
+| `preferences` | `preference_id` | Retour explicite, profil guitare et hashes des assets |
 
 Les secrets ne sont dans aucune table. Les chemins d'assets ne quittent jamais le Pi ; l'API de capacités fournit seulement `asset_id`, nom d'affichage, type, taille et hash.
 

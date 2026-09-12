@@ -51,6 +51,8 @@ def _services(config_path: Path):
                               config.policy.max_artifact_uncompressed_bytes,
                               config.policy.default_input_volume_db,
                               config.policy.default_output_volume_db)
+    from .asset_metadata import enrich_local_assets
+    enrich_local_assets(catalog, compiler)
     return config, database, catalog, compiler
 
 
@@ -59,6 +61,26 @@ def main() -> None:
     parser.add_argument("--config", type=Path, default=Path("config/pi.toml"))
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("status")
+    commands.add_parser("catalog-enrich-local")
+    di_import = commands.add_parser("di-import", help="Valide et copie un jeu de DI 48 kHz/24 bits/mono")
+    di_import.add_argument("--manifest", type=Path, required=True)
+    commands.add_parser("di-list")
+    evaluate = commands.add_parser("bench-evaluate", help="Rendus et optimisation, exclusivement hors live")
+    evaluate.add_argument("--job-id", required=True)
+    evaluate.add_argument("--set", required=True)
+    evaluate.add_argument("--di-id")
+    evaluate.add_argument("--maintenance-confirmed", action="store_true")
+    evaluate.add_argument("--no-optimize", action="store_true")
+    characterize = commands.add_parser("characterize", help="Mesure des NAM avec la même DI à plusieurs niveaux")
+    characterize.add_argument("--set", required=True)
+    characterize.add_argument("--di-id")
+    characterize.add_argument("--nam-limit", type=int, default=3)
+    characterize.add_argument("--all", action="store_true", help="Parcourt tous les NAM avec budget et reprise par cache")
+    characterize.add_argument("--cab-ir")
+    characterize.add_argument("--maintenance-confirmed", action="store_true")
+    recover = commands.add_parser("bench-recover", help="Restauration locale explicite après interruption du banc")
+    recover.add_argument("--journal", type=Path, required=True)
+    commands.add_parser("bench-list")
     capability = commands.add_parser("capabilities")
     capability.add_argument("--output", type=Path)
     validate = commands.add_parser("validate-proposals")
@@ -78,9 +100,37 @@ def main() -> None:
     enrich.add_argument("--token-env", default="TONE3000_ACCESS_TOKEN")
     args = parser.parse_args()
     config, database, catalog, compiler = _services(args.config)
-    if args.command == "status":
+    if args.command == "di-import":
+        from .di import ingest_di
+        print(json.dumps(ingest_di(database, args.manifest, config.bench.di_root), ensure_ascii=False, indent=2))
+    elif args.command == "di-list":
+        with database.connect() as c:
+            print(json.dumps([dict(r) for r in c.execute("SELECT set_id,sha256,created_at FROM di_sets")], indent=2))
+    elif args.command in ("bench-evaluate", "characterize", "bench-recover", "bench-list"):
+        from .pi.bench import BenchService
+        from .pi.renderer import PiPedalRenderer
+        from .pi.pipedal_client import PiPedalClient
+        from .pi.system_guard import SystemGuard
+        guard = SystemGuard(config.storage.artifact_root, config.policy.max_load_per_cpu, config.policy.min_free_mb)
+        renderer = PiPedalRenderer(catalog, compiler, PiPedalClient(config.pipedal), config.bench, guard)
+        bench = BenchService(database, catalog, compiler, renderer, RTXClient(config.rtx), config.bench)
+        if args.command == "bench-list":
+            result = bench.sessions()
+        elif args.command == "bench-recover":
+            result = asyncio.run(renderer.recover(args.journal))
+        elif args.command == "bench-evaluate":
+            result = asyncio.run(bench.evaluate_job(args.job_id, args.set, di_id=args.di_id,
+                maintenance_confirmed=args.maintenance_confirmed, optimize=not args.no_optimize))
+        else:
+            result = asyncio.run(bench.characterize(args.set, nam_limit=10000 if args.all else args.nam_limit, cab_ir_id=args.cab_ir,
+                di_id=args.di_id, maintenance_confirmed=args.maintenance_confirmed))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.command == "status":
         row = database.active_catalog()
         print(json.dumps(dict(row), ensure_ascii=False, indent=2))
+    elif args.command == "catalog-enrich-local":
+        from .asset_metadata import enrich_local_assets
+        print(json.dumps(enrich_local_assets(catalog, compiler), ensure_ascii=False, indent=2))
     elif args.command == "capabilities":
         value = json.dumps(catalog.capabilities(), ensure_ascii=False, indent=2) + "\n"
         if args.output:
@@ -114,6 +164,9 @@ def main() -> None:
                 raise PiPedalAIError("Le catalogue a changé pendant le diagnostic.")
             catalog.validate_proposal_set(proposal)
             artifacts = [compiler.compile(spec, args.output) for spec in proposal.proposals] if args.output else []
+            if args.output:
+                from .audio_io import atomic_json
+                atomic_json(args.output / "proposals.json", proposal.model_dump(mode="json"))
         except PiPedalAIError as exc:
             raise SystemExit(f"Diagnostic RTX échoué (aucun repli local) : {exc}") from exc
         print(json.dumps({"source": "rtx", "catalog": frozen.model_dump(mode="json"),

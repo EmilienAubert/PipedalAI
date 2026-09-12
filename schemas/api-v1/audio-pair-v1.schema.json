@@ -1,0 +1,72 @@
+{
+  "$defs": {
+    "CatalogRef": {
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "sha256"
+      ],
+      "title": "CatalogRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "pattern": "^pipedal-ai.audio-pair/1\\.0\\.0$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "catalog": {
+      "$ref": "#/$defs/CatalogRef"
+    },
+    "di_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Di Sha256",
+      "type": "string"
+    },
+    "render_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Render Sha256",
+      "type": "string"
+    },
+    "di_wav": {
+      "maxLength": 48000000,
+      "title": "Di Wav",
+      "type": "string"
+    },
+    "render_wav": {
+      "maxLength": 48000000,
+      "title": "Render Wav",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "request_id",
+    "catalog",
+    "di_sha256",
+    "render_sha256",
+    "di_wav",
+    "render_wav"
+  ],
+  "title": "AudioPairRequest",
+  "type": "object"
+}

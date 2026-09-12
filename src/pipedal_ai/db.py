@@ -85,6 +85,36 @@ CREATE TABLE IF NOT EXISTS asset_metadata (
 CREATE INDEX IF NOT EXISTS idx_asset_metadata_revision ON asset_metadata(revision,asset_id);
 """
 
+APP_SCHEMA_V5_SQL = """
+CREATE TABLE IF NOT EXISTS guitar_calibrations (
+ profile_id TEXT PRIMARY KEY, nam_input_calibration_dbu REAL NOT NULL,
+ FOREIGN KEY(profile_id) REFERENCES guitar_profiles(profile_id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS di_sets (
+ set_id TEXT PRIMARY KEY, sha256 TEXT NOT NULL UNIQUE, root TEXT NOT NULL,
+ manifest_json TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS bench_sessions (
+ session_id TEXT PRIMARY KEY, job_id TEXT, set_id TEXT NOT NULL,
+ catalog_revision INTEGER NOT NULL, catalog_sha256 TEXT NOT NULL,
+ status TEXT NOT NULL, report_json TEXT, error TEXT, created_at TEXT NOT NULL,
+ FOREIGN KEY(job_id) REFERENCES jobs(job_id), FOREIGN KEY(set_id) REFERENCES di_sets(set_id)
+);
+CREATE TABLE IF NOT EXISTS bench_candidates (
+ candidate_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, spec_json TEXT NOT NULL,
+ render_path TEXT NOT NULL, render_sha256 TEXT NOT NULL, preview_path TEXT NOT NULL,
+ metrics_json TEXT NOT NULL, score REAL NOT NULL, created_at TEXT NOT NULL,
+ FOREIGN KEY(session_id) REFERENCES bench_sessions(session_id)
+);
+CREATE TABLE IF NOT EXISTS preferences (
+ preference_id TEXT PRIMARY KEY, job_id TEXT NOT NULL, variant TEXT NOT NULL,
+ label TEXT NOT NULL, profile_id TEXT, features_json TEXT NOT NULL, created_at TEXT NOT NULL,
+ FOREIGN KEY(job_id) REFERENCES jobs(job_id), FOREIGN KEY(profile_id) REFERENCES guitar_profiles(profile_id)
+);
+CREATE INDEX IF NOT EXISTS idx_bench_candidates_session ON bench_candidates(session_id,score);
+CREATE INDEX IF NOT EXISTS idx_preferences_profile ON preferences(profile_id,created_at);
+"""
+
 
 class Database:
     def __init__(self, path: Path):
@@ -98,18 +128,19 @@ class Database:
         existed = self.path.exists()
         with self.connect() as connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4):
+            if version not in (0, 1, 2, 3, 4, 5):
                 raise CatalogError(f"Version SQLite incompatible : {version}")
             if version == 0:
                 connection.executescript(CATALOG_SCHEMA_SQL)
             connection.executescript(APP_SCHEMA_SQL)
             connection.executescript(APP_SCHEMA_V3_SQL)
+            connection.executescript(APP_SCHEMA_V5_SQL)
             connection.execute("BEGIN IMMEDIATE")
             try:
                 columns = {row["name"] for row in connection.execute("PRAGMA table_info(jobs)")}
                 if "fallback_reason" not in columns:
                     connection.execute("ALTER TABLE jobs ADD COLUMN fallback_reason TEXT")
-                connection.execute("PRAGMA user_version=4")
+                connection.execute("PRAGMA user_version=5")
                 connection.execute("COMMIT")
             except Exception:
                 connection.execute("ROLLBACK")

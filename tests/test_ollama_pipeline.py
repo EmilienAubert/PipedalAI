@@ -92,6 +92,7 @@ class OllamaPipelineTests(unittest.TestCase):
             max_retries=retries,
             max_plugin_candidates=24,
             max_assets_per_role=12,
+            planning_mode="raw",
         )
 
     def test_two_stage_pipeline_uses_only_shortlist_for_planning(self):
@@ -203,8 +204,7 @@ class OllamaPipelineTests(unittest.TestCase):
         intent = fallback_tone_intent(request().prompt).model_dump(mode="json")
         bad = {"plugin_count": 24, "selected_assets": []}
         _, bodies = self.generate([intent, bad, draft()], config=self.config(retries=1))
-        self.assertEqual(bodies[-1]["messages"][-2]["role"], "assistant")
-        self.assertEqual(json.loads(bodies[-1]["messages"][-2]["content"]), bad)
+        self.assertFalse(any(message["role"] == "assistant" for message in bodies[-1]["messages"]))
         self.assertIn("variants", bodies[-1]["messages"][-1]["content"])
 
     def test_http_400_keeps_actual_ollama_error_and_does_not_relax_format(self):

@@ -34,6 +34,15 @@
       "additionalProperties": true,
       "title": "Capabilities",
       "type": "object"
+    },
+    "preferences": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "maxItems": 64,
+      "title": "Preferences",
+      "type": "array"
     }
   },
   "required": [

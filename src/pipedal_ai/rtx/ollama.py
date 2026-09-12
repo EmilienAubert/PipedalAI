@@ -14,7 +14,7 @@ from pydantic import BaseModel, ValidationError
 from ..config import OllamaConfig
 from ..errors import RemoteServiceError
 from ..intent import ToneIntent
-from ..models import PlanDraft, PresetSpec, ProposalSet, RTXProposalRequest
+from ..models import MusicalPlan, PlanDraft, PresetSpec, ProposalSet, RTXProposalRequest
 from .retrieval import CandidateRetriever, _plugin_effect_roles
 from .fingerprints import FingerprintIndex
 from .diagnostics import save_exchange
@@ -96,7 +96,32 @@ class OllamaClient:
     async def propose(self, request: RTXProposalRequest) -> ProposalSet:
         intent = await self.extract_intent(request.prompt, request.profile)
         capabilities = self._with_fingerprints(request.capabilities)
+        nam_host = next((p for p in capabilities.get("plugins", []) if p["uri"] == "http://two-play.com/plugins/toob-nam"), None)
+        if nam_host:
+            expected = {c["symbol"]: c["default"] for c in nam_host["controls"] if "Calibration" in c["symbol"] or c["symbol"] == "calibration"}
+            calibration = (request.profile or {}).get("nam_input_calibration_dbu")
+            if calibration is not None:
+                expected.update(inputCalibrationMode=1, calibration=calibration)
+            for asset in capabilities.get("assets", []):
+                meta = (asset.get("metadata") or {}).get("characterization")
+                if meta:
+                    meta["profiles"] = {k: p for k, p in meta.get("profiles", {}).items()
+                        if all(p.get("context", {}).get("parameters", {}).get(symbol) == value for symbol, value in expected.items())}
+        for asset in capabilities.get("assets", []):
+            asset["user_preference_score"] = sum(float(p.get("score", 0)) for p in request.preferences
+                if p.get("asset_sha256") == asset.get("sha256"))
         shortlist = self.retriever.retrieve(intent, request.prompt, capabilities)
+        if self.config.planning_mode == "musical":
+            from .musical import MUSICAL_SYSTEM, build_musical_set, compact_shortlist
+            shortlist = compact_shortlist(shortlist, intent, request.prompt)
+            payload = {"request_id": request.request_id, "catalog": request.capabilities["catalog"],
+                       "tone_intent": intent.model_dump(mode="json"), "candidate_shortlist": shortlist}
+            def validate_musical(value):
+                proposal = build_musical_set(value, request, intent, shortlist)
+                self._validate_plan(proposal, request, intent, shortlist)
+            plan = await self._generate(MusicalPlan, MUSICAL_SYSTEM, payload,
+                                        validate=validate_musical, temperature=self.config.temperature)
+            return build_musical_set(plan, request, intent, shortlist)
         if not shortlist.get("plugins"):
             raise RemoteServiceError("Aucun plugin disponible pour cette intention.")
         payload = {
@@ -164,30 +189,50 @@ class OllamaClient:
                 schema = planning_schema(payload)
             except ValueError as exc:
                 raise RemoteServiceError(f"Schéma de planification impossible : {exc}") from exc
+        elif model_type is MusicalPlan:
+            from .musical import musical_schema
+            try:
+                schema = musical_schema(payload)
+            except ValueError as exc:
+                raise RemoteServiceError(f"Schéma musical impossible : {exc}") from exc
         elif model_type is ToneIntent:
             schema["properties"]["prompt"] = {"type": "string", "enum": [payload["prompt"]]}
-        stage = "plan" if model_type is PlanDraft else "intent"
+        stage = "plan" if model_type in (PlanDraft, MusicalPlan) else "intent"
         for attempt in range(1, self.config.max_retries + 2):
             messages = [{"role": "system", "content": system_prompt +
                          "\nOutput JSON schema:\n" + json.dumps(schema, ensure_ascii=False, separators=(",", ":"))}]
+            from .musical import musical_input
+            prompt_payload = (musical_input(payload) if model_type is MusicalPlan else
+                              _prompt_payload(payload) if model_type is PlanDraft else payload)
             user_content = ("Generate the requested " + model_type.__name__ +
                             " now, using the following input data. Do not summarize this data.\n" +
-                            json.dumps(_prompt_payload(payload) if model_type is PlanDraft else payload,
+                            json.dumps(prompt_payload,
                                        ensure_ascii=False, separators=(",", ":")))
             messages.append({"role": "user", "content": user_content})
             if correction:
-                if previous_content:
+                if previous_content and model_type not in (PlanDraft, MusicalPlan):
                     messages.append({"role": "assistant", "content": previous_content[:16000]})
                 messages.append({"role": "user", "content":
                                  "Your answer was rejected. Return a complete corrected " +
                                  model_type.__name__ + " JSON object, no wrapper. Reason: " + correction})
+            # Conservative character-based estimate, not a model-specific tokenizer.
+            # Never send a visibly overfull prompt. Musical decisions need much less
+            # room than raw LV2 plans; cap output independently of a user's large setting.
+            estimate = sum(len(m["content"]) for m in messages) // 2 + 128
+            reserve = 1800 if model_type is MusicalPlan else 2048 if model_type is ToneIntent else 4096
+            if estimate + reserve > self.config.num_ctx:
+                raise RemoteServiceError(
+                    f"Contexte estimé trop chargé étape={stage}: estimation={estimate}, "
+                    f"réserve={reserve}, num_ctx={self.config.num_ctx}. "
+                    "Réduire la liste courte ou augmenter num_ctx; ne pas augmenter num_predict.")
             body = {
                 "model": self.config.model,
                 "stream": False,
                 "format": schema if self.config.output_format == "schema" else "json",
                 "messages": messages,
                 "options": {"temperature": temperature, "seed": 42,
-                            "num_predict": self.config.num_predict, "num_ctx": self.config.num_ctx},
+                            "num_predict": min(self.config.num_predict, self.config.num_ctx - estimate),
+                            "num_ctx": self.config.num_ctx},
             }
             if self.config.think is not None:
                 body["think"] = self.config.think
@@ -200,7 +245,16 @@ class OllamaClient:
                 if "error" in envelope:
                     raise ValueError(f"Ollama error: {envelope['error']}")
                 if envelope.get("done_reason") == "length":
-                    raise ValueError(f"Réponse tronquée : limite num_predict={self.config.num_predict} atteinte.")
+                    used_in = envelope.get("prompt_eval_count")
+                    used_out = envelope.get("eval_count")
+                    if isinstance(used_in, int) and isinstance(used_out, int) and used_in + used_out >= self.config.num_ctx:
+                        raise ValueError(f"Réponse tronquée : contexte saturé num_ctx={self.config.num_ctx}, "
+                                         f"entrée={used_in}, sortie={used_out}. Réduire le contexte.")
+                    if isinstance(used_out, int) and used_out >= body["options"]["num_predict"]:
+                        raise ValueError(f"Réponse tronquée : limite num_predict={body['options']['num_predict']} atteinte.")
+                    raise ValueError(f"Réponse tronquée signalée par Ollama; cause non déterminée "
+                                     f"(entrée={used_in}, sortie={used_out}, num_ctx={self.config.num_ctx}, "
+                                     f"num_predict={body['options']['num_predict']}).")
                 if envelope.get("done") is False:
                     raise ValueError("Ollama a renvoyé une réponse incomplète.")
                 content = envelope["message"]["content"]
@@ -209,7 +263,7 @@ class OllamaClient:
                 value = model_type.model_validate_json(content)
                 if validate:
                     validate(value)
-                if model_type is PlanDraft:
+                if model_type in (PlanDraft, MusicalPlan):
                     Draft202012Validator(schema).validate(json.loads(content))
                 save_exchange(self.config.diagnostics_directory, stage, attempt, body,
                               response.text, response.status_code, None)
@@ -347,7 +401,7 @@ class OllamaClient:
 
 def _planning_context(shortlist: Mapping) -> dict:
     """Send only decision-relevant data, not a retrieval report to be echoed."""
-    plugin_keys = {"plugin_id", "name", "uri", "audio_inputs", "audio_outputs", "controls", "resource_roles"}
+    plugin_keys = {"plugin_id", "name", "class", "uri", "audio_inputs", "audio_outputs", "controls", "resource_roles"}
     asset_keys = {"asset_id", "display_name", "kind", "resource_role", "capture_type", "metadata",
                   "audio_fingerprint", "retrieval_reasons"}
     return {
@@ -406,6 +460,11 @@ def _validate_control_value(plugin_id: str, control: Mapping, value: object) -> 
 
 
 def _capture_type(asset: Mapping) -> str:
+    from ..asset_metadata import capture_info
+    return capture_info(dict(asset))["capture_type"]
+
+
+def _legacy_capture_type(asset: Mapping) -> str:
     direct = asset.get("capture_type")
     if isinstance(direct, str):
         return direct.casefold().replace("_", "-")

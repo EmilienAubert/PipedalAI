@@ -14,7 +14,7 @@ Le mode est utilisable avant le calcul des empreintes audio. Les empreintes amé
 | Catalogue | Fige la révision et le SHA-256, masque les chemins locaux | Ne voit que les capacités et identifiants opaques |
 | Compréhension | Peut appliquer le mode dégradé | Produit un `ToneIntent` structuré |
 | Recherche | Fournit les ressources réellement disponibles | `CandidateRetriever` classe plugins, NAM et IR |
-| Planification | — | Conçoit trois chaînes et leurs paramètres |
+| Planification | Recalcule les adaptateurs déterministes | Choisit un plan compact, les rôles et les candidats NAM/IR |
 | Validation | Vérifie chaque plugin, port, valeur, ressource et limite | Ne peut imposer aucune décision au Pi |
 | Production | Compile, relit et stocke les `.piPreset` | Ne produit pas de fichier PiPedal |
 | Import/activation | Opérations locales explicites et contrôlées | Aucun accès à PiPedal |
@@ -26,7 +26,9 @@ Le mode est utilisable avant le calcul des empreintes audio. Les empreintes amé
 3. Le Pi envoie au service RTX le prompt, le profil et un `CatalogCapabilitySet` dépourvu de chemins locaux.
 4. Ollama interprète la demande sous la forme d'un `ToneIntent` versionné `pipedal-ai.tone-intent/1.0.0`. Le contrat strict couvre `gain`, `dynamics`, `spectrum`, `space`, `modulation`, `delay`, `style`, `chain_constraints`, `guitar` et un niveau de confiance ; les valeurs psychoacoustiques sont bornées et les champs inconnus sont refusés.
 5. `CandidateRetriever` établit une liste courte à partir des seules capacités reçues. Il utilise les métadonnées disponibles et, lorsqu'elles existent, les empreintes `AudioFingerprint`.
-6. Le planificateur RTX génère exactement trois `PresetSpec` liés au même catalogue :
+6. Le planificateur génère un `MusicalPlan` court, sans dictionnaires LV2. Les
+   adaptateurs construisent trois `PresetSpec` liés au même catalogue et au même
+   objectif, puis le Pi recalcule leurs réglages et valide les types de capture :
    - `conservative` : chaîne courte, niveaux prudents et charge réduite ;
    - `balanced` : meilleure interprétation globale du prompt ;
    - `bold` : interprétation plus marquée, mais toujours conforme aux limites annoncées.
@@ -43,7 +45,8 @@ Le modèle n'est pas chargé de respecter la syntaxe interne de PiPedal par intu
 - traduire une phrase libre en objectifs sonores cohérents ;
 - déterminer les familles d'effets utiles et celles qui seraient superflues ;
 - classer les NAM et IR susceptibles d'atteindre la cible ;
-- régler conjointement la chaîne en tenant compte de la guitare, du gain staging et des variantes.
+- choisir les compromis de chaîne et les NAM ; les réglages LV2 proviennent des
+  adaptateurs, puis éventuellement d'une petite recherche mesurée sur le banc.
 
 Par exemple, « blues chaud, crunch léger, très dynamique, graves fermes et petite room » implique de préserver l'attaque, de limiter la compression, de ne pas confondre crunch léger et high-gain, de contrôler les graves avant ou après l'ampli et de garder une réverbération courte et discrète. Le modèle peut conclure qu'un NAM crunch suffit et qu'une pédale de drive n'est pas nécessaire.
 

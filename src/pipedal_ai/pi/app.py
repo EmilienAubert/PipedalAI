@@ -35,6 +35,8 @@ def create_app(config: PiConfig) -> FastAPI:
         catalog, config.storage.upload_root, config.policy.max_artifact_uncompressed_bytes,
         config.policy.default_input_volume_db, config.policy.default_output_volume_db,
     )
+    from ..asset_metadata import enrich_local_assets
+    local_metadata = enrich_local_assets(catalog, compiler)
     rtx = RTXClient(config.rtx)
     pipedal = PiPedalClient(config.pipedal)
     guard = SystemGuard(config.storage.artifact_root, config.policy.max_load_per_cpu, config.policy.min_free_mb)
@@ -42,10 +44,12 @@ def create_app(config: PiConfig) -> FastAPI:
     require_key = api_key_dependency(config.server.api_key)
 
     app = FastAPI(title="PiPedal AI — Pi Authority", version="1.0.0")
-    app.add_middleware(NetworkAndSizeMiddleware, allowed_cidrs=config.server.allowed_cidrs, max_body_bytes=2_000_000)
+    app.add_middleware(NetworkAndSizeMiddleware, allowed_cidrs=config.server.allowed_cidrs, max_body_bytes=2_000_000,
+                       route_limits={"/api/v1/di/import": 48 * 1024 * 1024})
     app.state.database = database
     app.state.catalog = catalog
     app.state.jobs = manager
+    app.state.local_metadata = local_metadata
 
     @app.get("/health")
     async def health() -> dict:
@@ -58,6 +62,7 @@ def create_app(config: PiConfig) -> FastAPI:
         return {"catalog": active.model_dump(), "system": guard.snapshot(),
                 "rtx_available": await rtx.health(), "pipedal_available": await pipedal.health(),
                 "import_enabled": config.pipedal.allow_import,
+                "bench_enabled": config.bench.enabled,
                 "activation_enabled": config.pipedal.allow_activation}
 
     @app.get("/api/v1/catalog/capabilities", dependencies=[Depends(require_key)])
@@ -67,7 +72,7 @@ def create_app(config: PiConfig) -> FastAPI:
     @app.get("/api/v1/profiles", dependencies=[Depends(require_key)])
     def profiles() -> list[dict]:
         with database.connect() as connection:
-            return [dict(row) for row in connection.execute("SELECT * FROM guitar_profiles ORDER BY name")]
+            return [dict(row) for row in connection.execute("SELECT p.*,c.nam_input_calibration_dbu FROM guitar_profiles p LEFT JOIN guitar_calibrations c USING(profile_id) ORDER BY name")]
 
     @app.post("/api/v1/profiles", dependencies=[Depends(require_key)], status_code=201)
     def create_profile(value: GuitarProfileCreate) -> GuitarProfile:
@@ -78,6 +83,8 @@ def create_app(config: PiConfig) -> FastAPI:
                 (profile.profile_id, profile.name, profile.guitar, profile.pickup,
                  profile.input_trim_db, profile.notes, profile.created_at),
             )
+            if profile.nam_input_calibration_dbu is not None:
+                connection.execute("INSERT INTO guitar_calibrations VALUES(?,?)", (profile.profile_id,profile.nam_input_calibration_dbu))
         return profile
 
     @app.delete("/api/v1/profiles/{profile_id}", dependencies=[Depends(require_key)], status_code=204)
@@ -135,6 +142,8 @@ def create_app(config: PiConfig) -> FastAPI:
         except (KeyError, ValueError, PiPedalAIError) as exc:
             raise HTTPException(409, str(exc)) from exc
 
+    from .bench_api import install_bench_routes
+    install_bench_routes(app, config, database, catalog, compiler, pipedal, rtx, guard, manager, require_key)
     web_root = Path(__file__).resolve().parent.parent / "web"
     app.mount("/", StaticFiles(directory=web_root, html=True), name="web")
     return app

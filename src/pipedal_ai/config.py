@@ -73,12 +73,34 @@ class PolicyConfig:
 
 
 @dataclass(frozen=True)
+class BenchConfig:
+    enabled: bool = False
+    di_root: Path = Path("./data/di")
+    output_root: Path = Path("./data/bench")
+    max_renders: int = 24
+    max_audio_cpu_percent: float = 75.0
+    tail_seconds: float = 2.0
+    track_directory: str = "shared/audio/Tracks"
+    record_directory: str = "shared/audio/Audio Recordings"
+    nam_input_calibration_dbu: float | None = None
+
+    def __post_init__(self):
+        import math
+        if not math.isfinite(self.max_audio_cpu_percent) or not 1 <= self.max_audio_cpu_percent <= 95:
+            raise ConfigurationError("bench.max_audio_cpu_percent doit être compris entre 1 et 95")
+        value = self.nam_input_calibration_dbu
+        if value is not None and (not math.isfinite(value) or not -30 <= value <= 12):
+            raise ConfigurationError("Calibration NAM du banc : mesure finie entre -30 et 12 dBu requise")
+
+
+@dataclass(frozen=True)
 class PiConfig:
     server: ServerConfig
     storage: StorageConfig
     rtx: RTXClientConfig
     pipedal: PiPedalConfig
     policy: PolicyConfig
+    bench: BenchConfig = field(default_factory=BenchConfig)
 
 
 @dataclass(frozen=True)
@@ -95,6 +117,7 @@ class OllamaConfig:
     num_ctx: int = 8192
     num_predict: int = 4096
     diagnostics_directory: Path | None = None
+    planning_mode: Literal["musical", "raw"] = "musical"
 
 
 @dataclass(frozen=True)
@@ -139,6 +162,7 @@ def load_pi_config(path: Path) -> PiConfig:
     rtx = _section(data, "rtx")
     pipedal = _section(data, "pipedal")
     policy = _section(data, "policy")
+    bench = _section(data, "bench")
     api_env = str(server.get("api_key_env", "PIPEDAL_AI_API_KEY"))
     api_key = _secret_from_env(api_env, required=False)
     server_host = str(server.get("host", "127.0.0.1"))
@@ -186,6 +210,15 @@ def load_pi_config(path: Path) -> PiConfig:
             max_load_per_cpu=float(policy.get("max_load_per_cpu", 0.90)),
             min_free_mb=int(policy.get("min_free_mb", 256)),
         ),
+        bench=BenchConfig(enabled=bool(bench.get("enabled", False)),
+            di_root=Path(bench.get("di_root", "./data/di")),
+            output_root=Path(bench.get("output_root", "./data/bench")),
+            max_renders=max(3, min(48, int(bench.get("max_renders", 24)))),
+            max_audio_cpu_percent=float(bench.get("max_audio_cpu_percent", 75)),
+            tail_seconds=max(0.5, min(10.0, float(bench.get("tail_seconds", 2)))),
+            track_directory=str(bench.get("track_directory", "shared/audio/Tracks")),
+            record_directory=str(bench.get("record_directory", "shared/audio/Audio Recordings")),
+            nam_input_calibration_dbu=float(bench["nam_input_calibration_dbu"]) if "nam_input_calibration_dbu" in bench else None),
     )
 
 
@@ -201,6 +234,9 @@ def load_rtx_config(path: Path) -> RTXConfig:
     think = ollama.get("think", False)
     if type(think) is not bool and think not in ("low", "medium", "high", "auto"):
         raise ConfigurationError("ollama.think doit être un booléen, low, medium, high ou auto.")
+    planning_mode = ollama.get("planning_mode", "musical")
+    if planning_mode not in ("musical", "raw"):
+        raise ConfigurationError("ollama.planning_mode doit être musical ou raw.")
     return RTXConfig(
         server=ServerConfig(
             host=str(server.get("host", "127.0.0.1")),
@@ -221,6 +257,7 @@ def load_rtx_config(path: Path) -> RTXConfig:
             num_ctx=max(2048, min(65536, int(ollama.get("num_ctx", 8192)))),
             num_predict=max(512, min(16384, int(ollama.get("num_predict", 4096)))),
             diagnostics_directory=_optional_path(ollama.get("diagnostics_directory")),
+            planning_mode=planning_mode,
         ),
         fingerprints=FingerprintConfig(
             enabled=bool(fingerprints.get("enabled", True)),

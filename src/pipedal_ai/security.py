@@ -6,10 +6,11 @@ from fastapi import Header, HTTPException
 
 
 class NetworkAndSizeMiddleware:
-    def __init__(self, app, allowed_cidrs: tuple[str, ...], max_body_bytes: int = 2 * 1024 * 1024):
+    def __init__(self, app, allowed_cidrs: tuple[str, ...], max_body_bytes: int = 2 * 1024 * 1024, route_limits=None):
         self.app = app
         self.networks = tuple(ipaddress.ip_network(value, strict=False) for value in allowed_cidrs)
         self.max_body_bytes = max_body_bytes
+        self.route_limits = route_limits or {}
 
     async def __call__(self, scope, receive, send) -> None:
         if scope["type"] not in {"http", "websocket"}:
@@ -28,10 +29,11 @@ class NetworkAndSizeMiddleware:
             await self.app(scope, receive, send)
             return
         headers = {key.lower(): value for key, value in scope.get("headers", [])}
+        body_limit = self.route_limits.get(scope.get("path"), self.max_body_bytes)
         content_length = headers.get(b"content-length")
         if content_length:
             try:
-                if int(content_length) > self.max_body_bytes:
+                if int(content_length) > body_limit:
                     await self._reject(send, 413, b"request too large")
                     return
             except (ValueError, TypeError):
@@ -42,7 +44,7 @@ class NetworkAndSizeMiddleware:
             message = await receive()
             body = message.get("body", b"")
             total += len(body)
-            if total > self.max_body_bytes:
+            if total > body_limit:
                 await self._reject(send, 413, b"request too large")
                 return
             messages.append(message)

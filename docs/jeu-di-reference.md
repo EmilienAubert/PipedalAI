@@ -4,7 +4,10 @@
 
 Le jeu de DI est un ensemble de prises de guitare sans effet. Les mêmes fichiers sont envoyés à chaque NAM lors de la caractérisation, afin que leurs différences mesurées proviennent du modèle et non d'une performance différente.
 
-Ces fichiers servent à construire les `AudioFingerprint` pour le mode texte. Ils pourront être réutilisés lors du futur mode « référence audio », mais ils ne constituent pas eux-mêmes une référence de morceau.
+Depuis 0.8.0, ces fichiers servent aux mesures appariées DI/rendu et aux profils
+contextuels du mode texte. Ils pourront être réutilisés pour le futur mode référence
+audio ; ils ne constituent pas eux-mêmes une référence de morceau.
+Pour commencer rapidement, une seule prise dynamique de 20 à 30 secondes suffit.
 
 ## Livraison minimale et livraison recommandée
 
@@ -190,9 +193,9 @@ Un contrôle technique peut être effectué avec un outil audio local tel que `f
 
 ## Procédure d'ingestion
 
-1. Placez le dossier et son manifeste dans l'emplacement d'import local prévu sur le PC RTX.
-2. Lancez d'abord la validation seule : format, taille, durée, mono, fréquence, profondeur PCM, chemins relatifs et SHA-256.
-3. Examinez le rapport et corrigez les fichiers refusés ; ne forcez pas leur import.
+1. Placez le dossier et son manifeste sur le **Pi**, dans un dossier d'entrée.
+2. Lancez `pipedal-ai --config config/pi.toml di-import --manifest /chemin/manifest.json` : format, taille, durée, mono, fréquence, PCM, chemins et SHA-256 sont validés avant la copie gérée.
+3. Corrigez les fichiers refusés ; ne forcez pas leur import. Le manifeste n'est pas réécrit.
 4. Enregistrez le jeu validé comme version immuable.
 5. Calculez les caractéristiques des DI, puis les empreintes d'un petit lot de NAM.
 6. Comparez les résultats sur quelques modèles clean, crunch et high-gain connus avant d'indexer tout le catalogue.
@@ -216,7 +219,7 @@ Le rendu automatique avec TooB File Player et TooB Record Input doit être test�
 
 L'utilisateur doit préparer au minimum :
 
-- cinq WAV d'une guitare représentative, selon les cinq séquences ;
+- une prise dynamique pour démarrer ; idéalement cinq WAV selon les séquences ;
 - idéalement le même lot pour un simple bobinage chevalet et un humbucker chevalet ;
 - un manifeste renseignant guitare, micro, position, réglages et gain d'interface ;
 - l'autorisation d'utiliser ces prises pour les calculs locaux du projet ;

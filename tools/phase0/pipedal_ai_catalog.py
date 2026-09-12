@@ -198,7 +198,7 @@ def open_database(path: Path) -> sqlite3.Connection:
         require(
             # App migrations 2-4 add tables/columns outside the immutable catalog.
             # Accept these known layouts, but never downgrade their user_version.
-            user_version in (0, DATABASE_SCHEMA_VERSION, 2, 3, 4),
+            user_version in (0, DATABASE_SCHEMA_VERSION, 2, 3, 4, 5),
             "Version de schéma SQLite incompatible.",
         )
         connection.execute("PRAGMA foreign_keys = ON")

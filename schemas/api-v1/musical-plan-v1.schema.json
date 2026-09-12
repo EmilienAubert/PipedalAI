@@ -1,0 +1,118 @@
+{
+  "$defs": {
+    "CatalogRef": {
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "sha256"
+      ],
+      "title": "CatalogRef",
+      "type": "object"
+    },
+    "MusicalChainChoice": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "input",
+            "noise_gate",
+            "drive",
+            "amp",
+            "cabinet",
+            "eq",
+            "modulation",
+            "delay",
+            "reverb",
+            "output"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "plugin_id": {
+          "pattern": "^plg_[a-f0-9]{24}$",
+          "title": "Plugin Id",
+          "type": "string"
+        },
+        "asset_id": {
+          "anyOf": [
+            {
+              "pattern": "^ast_[a-f0-9]{24}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Id"
+        }
+      },
+      "required": [
+        "role",
+        "plugin_id"
+      ],
+      "title": "MusicalChainChoice",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Small internal decision contract. No arbitrary LV2 parameter dictionary.",
+  "properties": {
+    "schema_version": {
+      "const": "pipedal-ai.musical-plan/1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "catalog": {
+      "$ref": "#/$defs/CatalogRef"
+    },
+    "chain": {
+      "items": {
+        "$ref": "#/$defs/MusicalChainChoice"
+      },
+      "maxItems": 8,
+      "minItems": 1,
+      "title": "Chain",
+      "type": "array"
+    },
+    "nam_candidates": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3,
+      "title": "Nam Candidates",
+      "type": "array"
+    },
+    "rationale": {
+      "maxLength": 240,
+      "title": "Rationale",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "request_id",
+    "catalog",
+    "chain",
+    "rationale"
+  ],
+  "title": "MusicalPlan",
+  "type": "object"
+}

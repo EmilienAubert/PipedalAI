@@ -1,0 +1,189 @@
+{
+  "$defs": {
+    "DIFile": {
+      "additionalProperties": false,
+      "properties": {
+        "di_id": {
+          "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+          "title": "Di Id",
+          "type": "string"
+        },
+        "file": {
+          "maxLength": 200,
+          "title": "File",
+          "type": "string"
+        },
+        "purpose": {
+          "maxLength": 80,
+          "title": "Purpose",
+          "type": "string"
+        },
+        "guitar": {
+          "maxLength": 120,
+          "title": "Guitar",
+          "type": "string"
+        },
+        "pickup_type": {
+          "maxLength": 40,
+          "title": "Pickup Type",
+          "type": "string"
+        },
+        "pickup_position": {
+          "maxLength": 40,
+          "title": "Pickup Position",
+          "type": "string"
+        },
+        "guitar_volume": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "ge": 0,
+          "le": 10,
+          "title": "Guitar Volume"
+        },
+        "guitar_tone": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "ge": 0,
+          "le": 10,
+          "title": "Guitar Tone"
+        },
+        "input_gain_note": {
+          "maxLength": 200,
+          "title": "Input Gain Note",
+          "type": "string"
+        },
+        "performance": {
+          "maxLength": 240,
+          "title": "Performance",
+          "type": "string"
+        },
+        "notes": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Notes",
+          "type": "string"
+        }
+      },
+      "required": [
+        "di_id",
+        "file",
+        "purpose",
+        "guitar",
+        "pickup_type",
+        "pickup_position",
+        "guitar_volume",
+        "guitar_tone",
+        "input_gain_note",
+        "performance"
+      ],
+      "title": "DIFile",
+      "type": "object"
+    },
+    "DIManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "pattern": "^pipedal-ai\\.di-manifest/1\\.0\\.0$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "set_id": {
+          "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+          "title": "Set Id",
+          "type": "string"
+        },
+        "sample_rate_hz": {
+          "maximum": 48000,
+          "minimum": 48000,
+          "title": "Sample Rate Hz",
+          "type": "integer"
+        },
+        "pcm_bits": {
+          "maximum": 24,
+          "minimum": 24,
+          "title": "Pcm Bits",
+          "type": "integer"
+        },
+        "channels": {
+          "maximum": 1,
+          "minimum": 1,
+          "title": "Channels",
+          "type": "integer"
+        },
+        "files": {
+          "items": {
+            "$ref": "#/$defs/DIFile"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Files",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "set_id",
+        "sample_rate_hz",
+        "pcm_bits",
+        "channels",
+        "files"
+      ],
+      "title": "DIManifest",
+      "type": "object"
+    },
+    "UploadedDI": {
+      "additionalProperties": false,
+      "properties": {
+        "di_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "title": "Di Id",
+          "type": "string"
+        },
+        "audio_base64": {
+          "maxLength": 46137344,
+          "title": "Audio Base64",
+          "type": "string"
+        }
+      },
+      "required": [
+        "di_id",
+        "audio_base64"
+      ],
+      "title": "UploadedDI",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "manifest": {
+      "$ref": "#/$defs/DIManifest"
+    },
+    "files": {
+      "items": {
+        "$ref": "#/$defs/UploadedDI"
+      },
+      "maxItems": 32,
+      "minItems": 1,
+      "title": "Files",
+      "type": "array"
+    }
+  },
+  "required": [
+    "manifest",
+    "files"
+  ],
+  "title": "DIUpload",
+  "type": "object"
+}

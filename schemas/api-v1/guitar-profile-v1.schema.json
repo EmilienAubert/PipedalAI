@@ -1,0 +1,76 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "guitar": {
+      "default": "",
+      "maxLength": 120,
+      "title": "Guitar",
+      "type": "string"
+    },
+    "pickup": {
+      "default": "unknown",
+      "enum": [
+        "unknown",
+        "single_coil",
+        "humbucker",
+        "p90",
+        "active",
+        "piezo"
+      ],
+      "title": "Pickup",
+      "type": "string"
+    },
+    "input_trim_db": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "default": 0,
+      "ge": -24,
+      "le": 24,
+      "title": "Input Trim Db"
+    },
+    "notes": {
+      "default": "",
+      "maxLength": 500,
+      "title": "Notes",
+      "type": "string"
+    },
+    "nam_input_calibration_dbu": {
+      "anyOf": [
+        {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "ge": -30,
+          "le": 12
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Nam Input Calibration Dbu"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "title": "GuitarProfileCreate",
+  "type": "object"
+}

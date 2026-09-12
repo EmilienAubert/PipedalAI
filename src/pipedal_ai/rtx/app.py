@@ -19,16 +19,19 @@ from .ollama import OllamaClient
 
 def create_app(config: RTXConfig) -> FastAPI:
     app = FastAPI(title="PiPedal AI RTX", version=__version__, docs_url=None, redoc_url=None)
-    app.add_middleware(NetworkAndSizeMiddleware, allowed_cidrs=config.server.allowed_cidrs, max_body_bytes=4 * 1024 * 1024)
+    app.add_middleware(NetworkAndSizeMiddleware, allowed_cidrs=config.server.allowed_cidrs, max_body_bytes=4 * 1024 * 1024,
+                       route_limits={"/api/v1/audio/analyze-pair": 96 * 1024 * 1024})
     authorize = bearer_dependency(config.server.bearer_token)
     fingerprint_index = FingerprintIndex(config.fingerprints.index_path) if config.fingerprints.enabled else None
     ollama = OllamaClient(config.ollama, fingerprint_index=fingerprint_index)
     app.state.ollama = ollama
+    from .audio_api import install_audio_routes
+    install_audio_routes(app, authorize)
 
     @app.get("/api/v1/health")
     async def health() -> dict:
         return {"status": "ok", "ollama": await ollama.health(), "version": __version__,
-                "text_pipeline": "intent-shortlist-plan-draft/1.0.0",
+                "text_pipeline": "intent-shortlist-musical-adapters/1.0.0",
                 "model": config.ollama.model, "output_format": config.ollama.output_format}
 
     @app.post("/api/v1/intents/text", response_model=ToneIntent, dependencies=[Depends(authorize)])

@@ -1,4 +1,4 @@
-# PiPedal AI MVP
+# PiPedal AI 0.8.0
 
 PiPedal AI transforme une description textuelle en trois presets (`conservative`, `balanced`, `bold`) validés et compilés sur le Raspberry Pi. Le Pi reste l'unique autorité : le PC RTX ne reçoit qu'un catalogue de capacités sans chemins locaux et ne peut ni écrire dans PiPedal ni exécuter de commandes sur le Pi.
 
@@ -12,8 +12,19 @@ PiPedal AI transforme une description textuelle en trois presets (`conservative`
 - schémas JSON versionnés, unités systemd, tests et documentation d'exploitation ;
 - compatibilité structurelle testée avec les deux presets de référence fournis.
 
-Le mode texte complet est la priorité de cette version. La séparation d'une référence audio et
-l'optimisation itérative par rendu viendront après sa recette matérielle.
+Le mode texte utilise maintenant un `MusicalPlan` compact : choix des rôles et des
+NAM/IR par Ollama, réglages par adaptateurs vérifiés, revalidation indépendante sur
+le Pi. Une fuzz ne sert jamais de compresseur. Les métadonnées intégrées aux NAM
+sont extraites localement et leurs déclarations contradictoires restent inconnues.
+
+Le banc optionnel mesure la même DI à plusieurs niveaux dans PiPedal, envoie les
+paires DI/rendu à la RTX, propose une optimisation bornée et des préécoutes A/B/C
+à niveau comparable. Les mesures sont des indices contextuels, pas des signatures
+universelles ni une garantie de reproduction d'un artiste. Il reste désactivé par
+défaut et s'utilise exclusivement hors live. Le mode référence audio reste à venir.
+
+**Installation sur ton Pi et Windows existants : [mise à jour 0.8.0](docs/mise-a-jour-v080.md).**
+**DI, mesures, préécoutes et reprise : [guide du banc](docs/banc-di.md).**
 
 ## Démarrage rapide
 

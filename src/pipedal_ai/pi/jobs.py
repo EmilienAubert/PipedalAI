@@ -82,9 +82,11 @@ class JobManager:
                 self._require_active(catalog_ref)
                 capabilities = self.catalog.capabilities(catalog_ref)
                 profile = self._profile(request.profile_id)
+                from ..preferences import ranking_preferences
                 rtx_request = RTXProposalRequest(
                     schema_version="pipedal-ai.rtx-request/1.0.0", request_id=job_id,
                     prompt=request.prompt, profile=profile, capabilities=capabilities,
+                    preferences=ranking_preferences(self.database, request.profile_id),
                 )
                 try:
                     proposal = await self.rtx.propose(rtx_request)
@@ -177,7 +179,7 @@ class JobManager:
         if not profile_id:
             return None
         with self.database.connect() as connection:
-            row = connection.execute("SELECT * FROM guitar_profiles WHERE profile_id=?", (profile_id,)).fetchone()
+            row = connection.execute("SELECT p.*,c.nam_input_calibration_dbu FROM guitar_profiles p LEFT JOIN guitar_calibrations c USING(profile_id) WHERE p.profile_id=?", (profile_id,)).fetchone()
         return dict(row) if row else None
 
     def get(self, job_id: str) -> JobView:
@@ -195,6 +197,7 @@ class JobManager:
             catalog={"revision": row["catalog_revision"], "sha256": row["catalog_sha256"]},
             created_at=row["created_at"], updated_at=row["updated_at"], error=row["error"],
             fallback_reason=row["fallback_reason"], artifacts=artifacts,
+            decision_report=json.loads(row["proposal_json"]).get("decision_report", {}) if row["proposal_json"] else {},
         )
 
     def list(self, limit: int = 30) -> list[JobView]:

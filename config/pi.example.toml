@@ -34,3 +34,14 @@ default_input_volume_db = -6.0
 default_output_volume_db = -6.0
 max_load_per_cpu = 0.90
 min_free_mb = 256
+
+[bench]
+enabled = false
+di_root = "./data/di"
+output_root = "./data/bench"
+max_renders = 24
+max_audio_cpu_percent = 75
+tail_seconds = 2
+track_directory = "shared/audio/Tracks"
+record_directory = "shared/audio/Audio Recordings"
+# nam_input_calibration_dbu = -6.0 # Only a measured technical value, never a tone knob.

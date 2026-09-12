@@ -59,6 +59,7 @@ class ProposalSet(StrictModel):
     request_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
     catalog: CatalogRef
     proposals: list[PresetSpec] = Field(min_length=3, max_length=3)
+    decision_report: dict = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def coherent_set(self) -> "ProposalSet":
@@ -95,12 +96,38 @@ class PlanDraft(StrictModel):
         return self
 
 
+class MusicalChainChoice(StrictModel):
+    role: Literal["input", "noise_gate", "drive", "amp", "cabinet", "eq", "modulation", "delay", "reverb", "output"]
+    plugin_id: str = Field(pattern=r"^plg_[a-f0-9]{24}$")
+    asset_id: str | None = Field(default=None, pattern=r"^ast_[a-f0-9]{24}$")
+
+
+class MusicalPlan(StrictModel):
+    """Small internal decision contract. No arbitrary LV2 parameter dictionary."""
+    schema_version: Literal["pipedal-ai.musical-plan/1.0.0"]
+    request_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    catalog: CatalogRef
+    chain: list[MusicalChainChoice] = Field(min_length=1, max_length=8)
+    nam_candidates: list[str] = Field(default_factory=list, max_length=3)
+    rationale: str = Field(max_length=240)
+
+    @model_validator(mode="after")
+    def unique_roles(self):
+        roles = [step.role for step in self.chain]
+        if len(roles) != len(set(roles)):
+            raise ValueError("one plugin per musical role in serial MVP")
+        if len(self.nam_candidates) != len(set(self.nam_candidates)):
+            raise ValueError("NAM candidates must be unique")
+        return self
+
+
 class GuitarProfileCreate(StrictModel):
     name: str = Field(min_length=1, max_length=80)
     guitar: str = Field(default="", max_length=120)
     pickup: Literal["unknown", "single_coil", "humbucker", "p90", "active", "piezo"] = "unknown"
     input_trim_db: FiniteNumber = Field(default=0, ge=-24, le=24)
     notes: str = Field(default="", max_length=500)
+    nam_input_calibration_dbu: FiniteNumber | None = Field(default=None, ge=-30, le=12)
 
 
 class GuitarProfile(GuitarProfileCreate):
@@ -135,6 +162,7 @@ class RTXProposalRequest(StrictModel):
     prompt: str = Field(min_length=3, max_length=2000)
     profile: dict | None = None
     capabilities: dict
+    preferences: list[dict] = Field(default_factory=list, max_length=64)
 
     @field_validator("prompt")
     @classmethod
@@ -180,3 +208,4 @@ class JobView(StrictModel):
     error: str | None = None
     fallback_reason: str | None = None
     artifacts: list[dict] = Field(default_factory=list)
+    decision_report: dict = Field(default_factory=dict)
