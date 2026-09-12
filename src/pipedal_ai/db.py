@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS jobs (
  job_id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL,
  prompt TEXT NOT NULL, profile_id TEXT, catalog_revision INTEGER NOT NULL,
  catalog_sha256 TEXT NOT NULL, request_json TEXT NOT NULL, proposal_json TEXT,
- error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+ error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, fallback_reason TEXT,
  FOREIGN KEY(profile_id) REFERENCES guitar_profiles(profile_id),
  FOREIGN KEY(catalog_revision) REFERENCES catalog_revisions(revision)
 );
@@ -98,13 +98,22 @@ class Database:
         existed = self.path.exists()
         with self.connect() as connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3):
+            if version not in (0, 1, 2, 3, 4):
                 raise CatalogError(f"Version SQLite incompatible : {version}")
             if version == 0:
                 connection.executescript(CATALOG_SCHEMA_SQL)
             connection.executescript(APP_SCHEMA_SQL)
             connection.executescript(APP_SCHEMA_V3_SQL)
-            connection.execute("PRAGMA user_version=3")
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                columns = {row["name"] for row in connection.execute("PRAGMA table_info(jobs)")}
+                if "fallback_reason" not in columns:
+                    connection.execute("ALTER TABLE jobs ADD COLUMN fallback_reason TEXT")
+                connection.execute("PRAGMA user_version=4")
+                connection.execute("COMMIT")
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
         if not existed:
             os.chmod(self.path, 0o600)
 

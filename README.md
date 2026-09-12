@@ -64,6 +64,7 @@ En production, utilisez le mTLS décrit dans [Sécurité](docs/security.md), et 
 
 ## Documentation
 
+- [Mise à jour propre Pi/Windows et diagnostic RTX — v0.7.3](docs/mise-a-jour-v073.md)
 - [Architecture et frontières d'autorité](docs/architecture.md)
 - [Installation sur le Pi](docs/installation-pi.md)
 - [Installation du service RTX](docs/installation-rtx.md)
@@ -81,7 +82,8 @@ En production, utilisez le mTLS décrit dans [Sécurité](docs/security.md), et 
 
 ## Tests
 
-Les tests du cœur n'utilisent que `unittest` et Pydantic :
+Après installation du package, les tests utilisent `unittest` et les dépendances du projet
+(notamment Pydantic et HTTPX). Les appels Ollama sont simulés :
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v

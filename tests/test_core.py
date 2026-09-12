@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import asyncio
 import json
 import tempfile
 import unittest
 import zipfile
-from unittest.mock import patch
+from unittest.mock import AsyncMock, Mock, patch
 from pathlib import Path
 
 from pipedal_ai.catalog import CatalogService
@@ -13,7 +14,7 @@ from pipedal_ai.compiler import PresetCompiler
 from pipedal_ai.config import load_pi_config
 from pipedal_ai.db import Database
 from pipedal_ai.degraded import DegradedProposer, _choose_asset, _find_plugin, _prompt_tags
-from pipedal_ai.errors import ConfigurationError, ContractError
+from pipedal_ai.errors import ConfigurationError, ContractError, RemoteServiceError
 from pipedal_ai.models import CatalogRef
 from pipedal_ai.pi.jobs import JobManager
 
@@ -149,6 +150,123 @@ class CoreTests(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=False):
             with self.assertRaises(ConfigurationError):
                 load_pi_config(config)
+
+    def run_job(self, rtx_answer=None, rtx_error=None):
+        compiler = PresetCompiler(self.catalog, self.root / "uploads", 1_000_000)
+        rtx = Mock()
+        rtx.propose = AsyncMock(return_value=rtx_answer, side_effect=rtx_error)
+        from pipedal_ai.models import TextPresetJobRequest
+
+        async def run():
+            manager = JobManager(self.db, self.catalog, compiler, rtx, Mock(), Mock(), self.root / "artifacts")
+            job_id = manager.create(TextPresetJobRequest(prompt="son clean"))
+            await asyncio.gather(*manager._tasks)
+            return manager.get(job_id)
+
+        return asyncio.run(run())
+
+    def test_completed_degraded_job_preserves_upstream_failure_reason(self):
+        value = self.run_job(rtx_error=RemoteServiceError("Ollama étape=plan HTTP 400 : invalid option"))
+        self.assertEqual(value.status, "completed")
+        self.assertEqual(value.source, "degraded")
+        self.assertIn("invalid option", value.fallback_reason)
+        self.assertIsNone(value.error)
+        self.assertEqual(len(value.artifacts), 3)
+
+    def test_pi_validation_fallback_is_visible(self):
+        wrong = DegradedProposer().propose("wrong_job", "clean", self.catalog.capabilities())
+        value = self.run_job(rtx_answer=wrong)
+        self.assertEqual(value.status, "completed")
+        self.assertEqual(value.source, "degraded")
+        self.assertIn("Validation sur le Pi", value.fallback_reason)
+        self.assertIn("travail demandé", value.fallback_reason)
+
+    def test_sqlite_v3_migration_preserves_existing_jobs_and_is_idempotent(self):
+        job = self.run_job(rtx_error=RemoteServiceError("RTX indisponible"))
+        with self.db.connect() as connection:
+            connection.execute("ALTER TABLE jobs DROP COLUMN fallback_reason")
+            connection.execute("PRAGMA user_version=3")
+        self.db.initialize()
+        self.db.initialize()
+        with self.db.connect() as connection:
+            row = connection.execute("SELECT * FROM jobs WHERE job_id=?", (job.job_id,)).fetchone()
+            self.assertEqual(row["status"], "completed")
+            self.assertEqual(row["prompt"], job.prompt)
+            self.assertIsNone(row["fallback_reason"])
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 4)
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0], 3)
+
+    def test_http_job_creation_runs_on_event_loop_and_finishes_with_rtx_source(self):
+        import httpx
+        from pipedal_ai.pi.app import create_app
+
+        config_path = self.root / "pi.toml"
+        config_path.write_text(
+            "[server]\nhost='127.0.0.1'\n[rtx]\nenabled=false\n[storage]\n" +
+            f"database={json.dumps(str(self.db.path))}\n" +
+            f"artifact_root={json.dumps(str(self.root / 'http-artifacts'))}\n" +
+            f"upload_root={json.dumps(str(self.root / 'uploads'))}\n",
+            encoding="utf-8",
+        )
+        config = load_pi_config(config_path)
+        app = create_app(config)
+        app.state.jobs.guard = Mock()
+
+        async def propose(value):
+            return DegradedProposer().propose(value.request_id, value.prompt, value.capabilities)
+
+        app.state.jobs.rtx.propose = AsyncMock(side_effect=propose)
+        headers = {"X-PiPedal-AI-Key": config.server.api_key}
+        async def run():
+            transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 50000))
+            async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
+                created = await client.post("/api/v1/jobs/text", json={"prompt": "son clean"}, headers=headers)
+                self.assertEqual(created.status_code, 202)
+                await asyncio.gather(*app.state.jobs._tasks)
+                return (await client.get(created.json()["status_url"], headers=headers)).json()
+
+        value = asyncio.run(run())
+        self.assertEqual(value["status"], "completed")
+        self.assertEqual(value["source"], "rtx")
+        self.assertIsNone(value["fallback_reason"])
+        self.assertEqual(len(value["artifacts"]), 3)
+
+    def test_diagnose_cli_compiles_three_presets_without_import(self):
+        import io
+        from contextlib import redirect_stdout
+        from pipedal_ai.cli import main
+
+        config = Mock()
+        compiler = PresetCompiler(self.catalog, self.root / "uploads", 1_000_000)
+        output = self.root / "diagnostic-artifacts"
+
+        async def propose(value):
+            return DegradedProposer().propose(value.request_id, value.prompt, value.capabilities)
+
+        result = io.StringIO()
+        with patch("pipedal_ai.cli._services", return_value=(config, self.db, self.catalog, compiler)), \
+             patch("pipedal_ai.cli.RTXClient") as client, \
+             patch("sys.argv", ["pipedal-ai", "diagnose-rtx", "--prompt", "son clean", "--output", str(output)]), \
+             redirect_stdout(result):
+            client.return_value.propose = AsyncMock(side_effect=propose)
+            main()
+        value = json.loads(result.getvalue())
+        self.assertEqual(value["source"], "rtx")
+        self.assertFalse(value["imported"])
+        self.assertEqual(len(value["artifacts"]), 3)
+        self.assertEqual(len(list(output.glob("*.piPreset"))), 3)
+
+    def test_diagnose_cli_failure_does_not_fall_back_or_compile(self):
+        from pipedal_ai.cli import main
+
+        output = self.root / "failed-diagnostic"
+        with patch("pipedal_ai.cli._services", return_value=(Mock(), self.db, self.catalog, Mock())), \
+             patch("pipedal_ai.cli.RTXClient") as client, \
+             patch("sys.argv", ["pipedal-ai", "diagnose-rtx", "--prompt", "son clean", "--output", str(output)]):
+            client.return_value.propose = AsyncMock(side_effect=RemoteServiceError("Ollama plan refusé"))
+            with self.assertRaisesRegex(SystemExit, "aucun repli local.*Ollama plan refusé"):
+                main()
+        self.assertFalse(output.exists())
 
 
 if __name__ == "__main__": unittest.main()

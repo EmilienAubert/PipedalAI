@@ -1,0 +1,171 @@
+{
+  "$defs": {
+    "CatalogRef": {
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "sha256"
+      ],
+      "title": "CatalogRef",
+      "type": "object"
+    },
+    "ChainStep": {
+      "additionalProperties": false,
+      "properties": {
+        "instance_id": {
+          "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+          "title": "Instance Id",
+          "type": "string"
+        },
+        "plugin_id": {
+          "pattern": "^plg_[a-f0-9]{24}$",
+          "title": "Plugin Id",
+          "type": "string"
+        },
+        "bypass": {
+          "default": false,
+          "title": "Bypass",
+          "type": "boolean"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "maxProperties": 64,
+          "title": "Parameters",
+          "type": "object"
+        },
+        "resources": {
+          "items": {
+            "$ref": "#/$defs/ResourceBinding"
+          },
+          "maxItems": 4,
+          "title": "Resources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "instance_id",
+        "plugin_id"
+      ],
+      "title": "ChainStep",
+      "type": "object"
+    },
+    "PlanVariantDraft": {
+      "additionalProperties": false,
+      "properties": {
+        "variant": {
+          "enum": [
+            "conservative",
+            "balanced",
+            "bold"
+          ],
+          "title": "Variant",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 500,
+          "title": "Description",
+          "type": "string"
+        },
+        "chain": {
+          "items": {
+            "$ref": "#/$defs/ChainStep"
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "title": "Chain",
+          "type": "array"
+        }
+      },
+      "required": [
+        "variant",
+        "description",
+        "chain"
+      ],
+      "title": "PlanVariantDraft",
+      "type": "object"
+    },
+    "ResourceBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "nam_model",
+            "cab_ir",
+            "reverb_ir"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "asset_id": {
+          "pattern": "^ast_[a-f0-9]{24}$",
+          "title": "Asset Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "asset_id"
+      ],
+      "title": "ResourceBinding",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Internal LLM contract; correlation is checked before adding preset metadata.",
+  "properties": {
+    "schema_version": {
+      "const": "pipedal-ai.plan-draft/1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "catalog": {
+      "$ref": "#/$defs/CatalogRef"
+    },
+    "variants": {
+      "items": {
+        "$ref": "#/$defs/PlanVariantDraft"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "title": "Variants",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "request_id",
+    "catalog",
+    "variants"
+  ],
+  "title": "PlanDraft",
+  "type": "object"
+}

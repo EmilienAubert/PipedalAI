@@ -20,6 +20,13 @@
 
 `ollama.model` sélectionne le modèle. `max_retries`, `max_plugin_candidates` et
 `max_assets_per_role` bornent le coût et la quantité de données envoyée au planificateur.
+`output_format` vaut `schema` par défaut ; `json` est une compatibilité explicite, jamais
+un repli automatique après HTTP 400. `think` accepte un booléen, `low`, `medium`, `high`
+ou `auto` (option omise). `num_ctx` et `num_predict` bornent contexte et sortie.
+`diagnostics_directory` active des traces privées bornées à 32 échanges ; absent, aucune
+réponse brute n'est sauvegardée. Leurs prompts et métadonnées peuvent être sensibles.
+Le délai Pi doit englober les deux étapes et toutes leurs reprises ; voir
+[la procédure Pi/Windows](mise-a-jour-v073.md).
 `fingerprints.index_path` désigne l'index local RTX ; un index absent démarre vide.
 L'appel étant isolé derrière `OllamaClient` et une API `/api/v1`, un autre moteur pourra
 le remplacer sans modifier le Pi.

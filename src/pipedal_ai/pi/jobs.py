@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,9 @@ from ..models import CatalogRef, GuitarProfile, JobView, ProposalSet, RTXProposa
 from .pipedal_client import PiPedalClient
 from .rtx_client import RTXClient
 from .system_guard import SystemGuard
+
+
+logger = logging.getLogger(__name__)
 
 
 def now() -> str:
@@ -85,7 +89,8 @@ class JobManager:
                 try:
                     proposal = await self.rtx.propose(rtx_request)
                     source = "rtx"
-                except RemoteServiceError:
+                except RemoteServiceError as exc:
+                    self._record_fallback(job_id, f"Service RTX : {exc}")
                     proposal = DegradedProposer().propose(job_id, request.prompt, capabilities, profile)
                     source = "degraded"
 
@@ -93,9 +98,10 @@ class JobManager:
                 try:
                     self._validate_correlated(proposal, job_id, catalog_ref)
                     self.catalog.validate_proposal_set(proposal)
-                except ContractError:
+                except ContractError as exc:
                     if source != "rtx":
                         raise
+                    self._record_fallback(job_id, f"Validation sur le Pi : {exc}")
                     proposal = DegradedProposer().propose(job_id, request.prompt, capabilities, profile)
                     source = "degraded"
                     self._validate_correlated(proposal, job_id, catalog_ref)
@@ -153,7 +159,7 @@ class JobManager:
             raise ContractError("La réponse ne correspond pas au catalogue figé.")
 
     def _set_job(self, job_id: str, **values: Any) -> None:
-        allowed = {"status", "source", "proposal_json", "error"}
+        allowed = {"status", "source", "proposal_json", "error", "fallback_reason"}
         values = {key: value for key, value in values.items() if key in allowed}
         values["updated_at"] = now()
         assignments = ",".join(f"{key}=?" for key in values)
@@ -161,6 +167,11 @@ class JobManager:
             connection.execute(
                 f"UPDATE jobs SET {assignments} WHERE job_id=?", (*values.values(), job_id)
             )
+
+    def _record_fallback(self, job_id: str, reason: str) -> None:
+        reason = reason[:2000]
+        logger.warning("job=%s mode dégradé : %s", job_id, reason)
+        self._set_job(job_id, source="degraded", fallback_reason=reason)
 
     def _profile(self, profile_id: str | None) -> dict | None:
         if not profile_id:
@@ -182,7 +193,8 @@ class JobManager:
         return JobView(
             job_id=row["job_id"], status=row["status"], source=row["source"], prompt=row["prompt"],
             catalog={"revision": row["catalog_revision"], "sha256": row["catalog_sha256"]},
-            created_at=row["created_at"], updated_at=row["updated_at"], error=row["error"], artifacts=artifacts,
+            created_at=row["created_at"], updated_at=row["updated_at"], error=row["error"],
+            fallback_reason=row["fallback_reason"], artifacts=artifacts,
         )
 
     def list(self, limit: int = 30) -> list[JobView]:

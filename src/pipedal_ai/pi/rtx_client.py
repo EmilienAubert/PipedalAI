@@ -46,5 +46,14 @@ class RTXClient:
                 )
                 response.raise_for_status()
                 return ProposalSet.model_validate(response.json())
+        except httpx.HTTPStatusError as exc:
+            try:
+                detail = exc.response.json().get("detail", exc.response.text)
+            except (ValueError, AttributeError):
+                detail = exc.response.text
+            # Do not hide the upstream contract failure behind a generic HTTP 502.
+            raise RemoteServiceError(
+                f"RTX HTTP {exc.response.status_code} : {str(detail)[:2000]}"
+            ) from exc
         except (httpx.HTTPError, ValueError, OSError, ssl.SSLError) as exc:
             raise RemoteServiceError(f"RTX indisponible ou réponse invalide : {exc}") from exc

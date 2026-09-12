@@ -28,7 +28,8 @@ def create_app(config: RTXConfig) -> FastAPI:
     @app.get("/api/v1/health")
     async def health() -> dict:
         return {"status": "ok", "ollama": await ollama.health(), "version": __version__,
-                "text_pipeline": "intent-shortlist-planner/1.0.0"}
+                "text_pipeline": "intent-shortlist-plan-draft/1.0.0",
+                "model": config.ollama.model, "output_format": config.ollama.output_format}
 
     @app.post("/api/v1/intents/text", response_model=ToneIntent, dependencies=[Depends(authorize)])
     async def intents(request: ToneIntentRequest) -> ToneIntent:

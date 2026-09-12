@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 from collections.abc import Callable, Mapping
 from typing import TypeVar
 
@@ -11,9 +12,14 @@ from pydantic import BaseModel, ValidationError
 from ..config import OllamaConfig
 from ..errors import RemoteServiceError
 from ..intent import ToneIntent
-from ..models import ProposalSet, RTXProposalRequest
+from ..models import PlanDraft, PresetSpec, ProposalSet, RTXProposalRequest
 from .retrieval import CandidateRetriever, _plugin_effect_roles
 from .fingerprints import FingerprintIndex
+from .diagnostics import save_exchange
+from .ollama_schema import generation_schema
+
+
+logger = logging.getLogger(__name__)
 
 
 INTENT_SYSTEM_PROMPT = """You are the musical intent extractor for PiPedal AI.
@@ -25,11 +31,13 @@ Copy the original prompt exactly. Never emit paths, URLs, commands or extra fiel
 """
 
 PLANNER_SYSTEM_PROMPT = """You are the preset planning engine for PiPedal AI.
-Return only one ProposalSet matching the supplied JSON schema. The Raspberry Pi is
+Return only one PlanDraft matching the supplied JSON schema. The Raspberry Pi is
 the sole authority. Use only plugin_id and asset_id values in the supplied shortlist.
 Never emit paths, shell commands, URLs, split routing, render-only plugins or extra
 fields. Return exactly three serial chains in this order: conservative, balanced,
-bold. Copy request_id and catalog exactly. Use only listed input-control symbols and
+bold in the variants array. Copy request_id and catalog exactly. Do not return a
+catalog summary, a tool call/result, selected_assets, items, or an outer wrapper.
+Use only listed input-control symbols and
 respect datatype, range and scale points. Bind every resource role required by a
 plugin. Prefer safe gain staging, useful musical differences and short chains.
 Add a cabinet IR after a NAM only when its metadata explicitly says it is an
@@ -81,16 +89,37 @@ class OllamaClient:
         shortlist = self.retriever.retrieve(intent, request.prompt, capabilities)
         payload = {
             "request_id": request.request_id,
+            "catalog": request.capabilities["catalog"],
             "tone_intent": intent.model_dump(mode="json"),
-            "candidate_shortlist": shortlist,
+            "candidate_shortlist": _planning_context(shortlist),
         }
 
-        def validate(value: ProposalSet) -> None:
-            self._validate_plan(value, request, intent, shortlist)
+        def validate(value: PlanDraft) -> None:
+            proposal = self._proposal_from_draft(value, request)
+            self._validate_plan(proposal, request, intent, shortlist)
 
-        return await self._generate(
-            ProposalSet, PLANNER_SYSTEM_PROMPT, payload, validate=validate,
+        draft = await self._generate(
+            PlanDraft, PLANNER_SYSTEM_PROMPT, payload, validate=validate,
             temperature=self.config.temperature,
+        )
+        return self._proposal_from_draft(draft, request)
+
+    @staticmethod
+    def _proposal_from_draft(draft: PlanDraft, request: RTXProposalRequest) -> ProposalSet:
+        if draft.request_id != request.request_id:
+            raise ValueError("Ollama a modifié request_id.")
+        if draft.catalog.model_dump(mode="json") != request.capabilities["catalog"]:
+            raise ValueError("Ollama a modifié la référence de catalogue.")
+        prefixes = {"conservative": "AI Conservative", "balanced": "AI Balanced", "bold": "AI Bold"}
+        return ProposalSet(
+            schema_version="pipedal-ai.proposal-set/1.0.0",
+            request_id=draft.request_id, catalog=draft.catalog,
+            proposals=[PresetSpec(
+                schema_version="pipedal-ai.preset-spec/1.0.0", catalog=draft.catalog,
+                variant=variant.variant,
+                name=f"{prefixes[variant.variant]} - {request.prompt[:40]}",
+                description=variant.description, chain=variant.chain,
+            ) for variant in draft.variants],
         )
 
     def _with_fingerprints(self, capabilities: Mapping) -> dict:
@@ -116,41 +145,97 @@ class OllamaClient:
     ) -> ModelT:
         last_error: Exception | None = None
         correction = ""
-        for _attempt in range(self.config.max_retries + 1):
-            messages = [{"role": "system", "content": system_prompt}]
+        previous_content = ""
+        schema = generation_schema(model_type)
+        if model_type is PlanDraft:
+            schema["properties"]["request_id"] = {"type": "string", "enum": [payload["request_id"]]}
+            schema["properties"]["catalog"]["properties"]["revision"] = {
+                "type": "integer", "enum": [payload["catalog"]["revision"]],
+            }
+            schema["properties"]["catalog"]["properties"]["sha256"] = {
+                "type": "string", "enum": [payload["catalog"]["sha256"]],
+            }
+            step_properties = schema["properties"]["variants"]["items"]["properties"]["chain"]["items"]["properties"]
+            plugin_ids = [item["plugin_id"] for item in payload["candidate_shortlist"]["plugins"]]
+            if plugin_ids:
+                step_properties["plugin_id"]["enum"] = plugin_ids
+            asset_ids = [item["asset_id"] for item in payload["candidate_shortlist"]["assets"]]
+            if asset_ids:
+                step_properties["resources"]["items"]["properties"]["asset_id"]["enum"] = asset_ids
+        elif model_type is ToneIntent:
+            schema["properties"]["prompt"] = {"type": "string", "enum": [payload["prompt"]]}
+        stage = "plan" if model_type is PlanDraft else "intent"
+        for attempt in range(1, self.config.max_retries + 2):
+            messages = [{"role": "system", "content": system_prompt +
+                         "\nOutput JSON schema:\n" + json.dumps(schema, ensure_ascii=False, separators=(",", ":"))}]
+            user_content = ("Generate the requested " + model_type.__name__ +
+                            " now, using the following input data. Do not summarize this data.\n" +
+                            json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+            messages.append({"role": "user", "content": user_content})
             if correction:
-                messages.append(
-                    {
-                        "role": "system",
-                        "content": "Your previous answer was rejected. Correct it. Reason: " + correction,
-                    }
-                )
-            messages.append(
-                {
-                    "role": "user",
-                    "content": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-                }
-            )
+                if previous_content:
+                    messages.append({"role": "assistant", "content": previous_content[:16000]})
+                messages.append({"role": "user", "content":
+                                 "Your answer was rejected. Return a complete corrected " +
+                                 model_type.__name__ + " JSON object, no wrapper. Reason: " + correction})
             body = {
                 "model": self.config.model,
                 "stream": False,
-                "format": model_type.model_json_schema(),
+                "format": schema if self.config.output_format == "schema" else "json",
                 "messages": messages,
-                "options": {"temperature": temperature, "seed": 42, "num_predict": 4096},
+                "options": {"temperature": temperature, "seed": 42,
+                            "num_predict": self.config.num_predict, "num_ctx": self.config.num_ctx},
             }
+            if self.config.think is not None:
+                body["think"] = self.config.think
+            response = None
+            content = ""
             try:
                 response = await self._post(f"{self.config.base_url}/api/chat", body)
                 response.raise_for_status()
                 envelope = response.json()
+                if "error" in envelope:
+                    raise ValueError(f"Ollama error: {envelope['error']}")
+                if envelope.get("done_reason") == "length":
+                    raise ValueError(f"Réponse tronquée : limite num_predict={self.config.num_predict} atteinte.")
+                if envelope.get("done") is False:
+                    raise ValueError("Ollama a renvoyé une réponse incomplète.")
                 content = envelope["message"]["content"]
+                if not isinstance(content, str) or not content.strip():
+                    raise ValueError("Réponse finale vide (message.content); le champ thinking n'est pas une réponse JSON.")
                 value = model_type.model_validate_json(content)
                 if validate:
                     validate(value)
+                save_exchange(self.config.diagnostics_directory, stage, attempt, body,
+                              response.text, response.status_code, None)
                 return value
+            except httpx.HTTPStatusError as exc:
+                detail = exc.response.text[:2000]
+                trace = save_exchange(self.config.diagnostics_directory, stage, attempt, body,
+                                      exc.response.text, exc.response.status_code, detail)
+                # A 400 may indicate a missing model or invalid option, not an
+                # unsupported schema. Never silently remove grammar constraints.
+                logger.warning("Ollama stage=%s HTTP=%s trace=%s", stage, exc.response.status_code, trace)
+                raise RemoteServiceError(
+                    f"Ollama étape={stage} HTTP {exc.response.status_code} : {detail}"
+                ) from exc
             except (httpx.HTTPError, KeyError, TypeError, ValueError, ValidationError) as exc:
                 last_error = exc
-                correction = str(exc).replace("\n", " ")[:600]
-        raise RemoteServiceError(f"Réponse Ollama invalide après validation : {last_error}") from last_error
+                # Pydantic input values may contain private catalogue/prompt data.
+                if isinstance(exc, ValidationError):
+                    errors = exc.errors(include_input=False, include_url=False, include_context=False)
+                    correction = json.dumps(errors, ensure_ascii=False)[:1800]
+                else:
+                    correction = str(exc).replace("\n", " ")[:1800] or type(exc).__name__
+                previous_content = content if isinstance(content, str) else ""
+                trace = save_exchange(self.config.diagnostics_directory, stage, attempt, body,
+                                      response.text if response is not None else None,
+                                      response.status_code if response is not None else None, correction)
+                logger.warning("Ollama stage=%s attempt=%s/%s trace=%s rejected: %s",
+                               stage, attempt, self.config.max_retries + 1, trace, correction)
+        raise RemoteServiceError(
+            f"Réponse Ollama invalide étape={stage} après {self.config.max_retries + 1} tentative(s) : {correction}"
+        ) from last_error
 
     async def _get(self, url: str, *, timeout: float) -> httpx.Response:
         if self._http_client is not None:
@@ -238,6 +323,19 @@ class OllamaClient:
             )
             if has_cabinet_ir and any(_capture_type(asset) != "amp" for asset in nam_assets):
                 raise ValueError("Une IR de cabinet exige un NAM explicitement marqué amp-only.")
+
+
+def _planning_context(shortlist: Mapping) -> dict:
+    """Send only decision-relevant data, not a retrieval report to be echoed."""
+    plugin_keys = {"plugin_id", "name", "uri", "audio_inputs", "audio_outputs", "controls", "resource_roles"}
+    asset_keys = {"asset_id", "display_name", "kind", "resource_role", "capture_type", "metadata",
+                  "audio_fingerprint", "retrieval_reasons"}
+    return {
+        "plugins": [{key: value for key, value in item.items() if key in plugin_keys}
+                    for item in shortlist.get("plugins", [])],
+        "assets": [{key: value for key, value in item.items() if key in asset_keys}
+                   for item in shortlist.get("assets", [])],
+    }
 
 
 def _validate_control_value(plugin_id: str, control: Mapping, value: object) -> None:

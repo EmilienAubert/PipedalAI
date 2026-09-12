@@ -5,6 +5,12 @@ allowed_cidrs = ["127.0.0.0/8", "192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12"]
 bearer_token_env = "PIPEDAL_AI_RTX_TOKEN"
 
 [ollama]
+output_format = "schema" # "json" only as an explicit compatibility choice.
+think = false # GPT-OSS: "low". "auto": omit the Ollama think option.
+num_ctx = 8192
+num_predict = 4096
+# Optional private local traces (prompts and catalogue data; 32 records maximum).
+# diagnostics_directory = "./data/ollama-diagnostics"
 base_url = "http://127.0.0.1:11434"
 model = "qwen3:14b"
 timeout_seconds = 90

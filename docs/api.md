@@ -20,6 +20,10 @@ Toutes les routes Pi sous `/api/v1` demandent `X-PiPedal-AI-Key`. La route RTX d
 
 Exemple de création :
 
+Les vues de travaux comprennent `fallback_reason` (nul sans repli). Un travail terminé
+avec `source: "degraded"` et `error: null` est un succès du moteur local, pas de l'IA RTX.
+La raison du repli reste consultable même lorsque les trois artefacts sont disponibles.
+
 ```json
 {
   "prompt": "son blues chaud et dynamique, petite room",
@@ -38,3 +42,7 @@ Exemple de création :
 | `POST` | `/api/v1/proposals/text` | Un `ProposalSet` strict de trois variantes |
 
 Les schémas publiés sont dans `schemas/api-v1`. Toute évolution incompatible crée `/api/v2` et de nouvelles chaînes `schema_version`; les champs inconnus sont refusés.
+
+`PlanDraft` est un contrat interne de génération Ollama, pas une nouvelle route réseau.
+Le service RTX valide ses identifiants travail/catalogue avant la construction du
+`ProposalSet`. Les contrats publics de proposition et de preset restent en version 1.

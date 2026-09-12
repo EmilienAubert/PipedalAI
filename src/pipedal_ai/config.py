@@ -5,7 +5,7 @@ import ipaddress
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from .errors import ConfigurationError
 
@@ -90,6 +90,11 @@ class OllamaConfig:
     max_retries: int = 1
     max_plugin_candidates: int = 24
     max_assets_per_role: int = 12
+    output_format: Literal["schema", "json"] = "schema"
+    think: bool | Literal["low", "medium", "high"] | None = False
+    num_ctx: int = 8192
+    num_predict: int = 4096
+    diagnostics_directory: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -190,6 +195,12 @@ def load_rtx_config(path: Path) -> RTXConfig:
     ollama = _section(data, "ollama")
     fingerprints = _section(data, "fingerprints")
     token_env = str(server.get("bearer_token_env", "PIPEDAL_AI_RTX_TOKEN"))
+    output_format = ollama.get("output_format", "schema")
+    if output_format not in ("schema", "json"):
+        raise ConfigurationError("ollama.output_format doit être 'schema' ou 'json'.")
+    think = ollama.get("think", False)
+    if type(think) is not bool and think not in ("low", "medium", "high", "auto"):
+        raise ConfigurationError("ollama.think doit être un booléen, low, medium, high ou auto.")
     return RTXConfig(
         server=ServerConfig(
             host=str(server.get("host", "127.0.0.1")),
@@ -205,6 +216,11 @@ def load_rtx_config(path: Path) -> RTXConfig:
             max_retries=max(0, min(3, int(ollama.get("max_retries", 1)))),
             max_plugin_candidates=max(8, min(64, int(ollama.get("max_plugin_candidates", 24)))),
             max_assets_per_role=max(1, min(64, int(ollama.get("max_assets_per_role", 12)))),
+            output_format=output_format,
+            think=None if think == "auto" else think,
+            num_ctx=max(2048, min(65536, int(ollama.get("num_ctx", 8192)))),
+            num_predict=max(512, min(16384, int(ollama.get("num_predict", 4096)))),
+            diagnostics_directory=_optional_path(ollama.get("diagnostics_directory")),
         ),
         fingerprints=FingerprintConfig(
             enabled=bool(fingerprints.get("enabled", True)),

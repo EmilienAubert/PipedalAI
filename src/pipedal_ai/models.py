@@ -70,6 +70,31 @@ class ProposalSet(StrictModel):
         return self
 
 
+class PlanVariantDraft(StrictModel):
+    variant: Literal["conservative", "balanced", "bold"]
+    description: str = Field(max_length=500)
+    chain: list[ChainStep] = Field(min_length=1, max_length=12)
+
+
+class PlanDraft(StrictModel):
+    """Internal LLM contract; correlation is checked before adding preset metadata."""
+
+    schema_version: Literal["pipedal-ai.plan-draft/1.0.0"]
+    request_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    catalog: CatalogRef
+    variants: list[PlanVariantDraft] = Field(min_length=3, max_length=3)
+
+    @model_validator(mode="after")
+    def coherent_variants(self) -> "PlanDraft":
+        if [variant.variant for variant in self.variants] != ["conservative", "balanced", "bold"]:
+            raise ValueError("variants must be ordered conservative, balanced, bold")
+        for variant in self.variants:
+            identifiers = [step.instance_id for step in variant.chain]
+            if len(identifiers) != len(set(identifiers)):
+                raise ValueError("instance_id values must be unique per variant")
+        return self
+
+
 class GuitarProfileCreate(StrictModel):
     name: str = Field(min_length=1, max_length=80)
     guitar: str = Field(default="", max_length=120)
@@ -124,6 +149,10 @@ class RTXProposalRequest(StrictModel):
     def capability_shape(cls, value: dict) -> dict:
         if value.get("schema_version") != "pipedal-ai.catalog-capabilities/1.0.0":
             raise ValueError("unsupported capability schema")
+        CatalogRef.model_validate(value.get("catalog"))
+        for key in ("plugins", "assets"):
+            if not isinstance(value.get(key), list) or any(not isinstance(item, dict) for item in value[key]):
+                raise ValueError(f"capabilities.{key} must be a list of objects")
         return value
 
 
@@ -149,4 +178,5 @@ class JobView(StrictModel):
     created_at: str
     updated_at: str
     error: str | None = None
+    fallback_reason: str | None = None
     artifacts: list[dict] = Field(default_factory=list)

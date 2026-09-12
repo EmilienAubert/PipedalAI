@@ -117,15 +117,33 @@ class CatalogDatabaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             database = Path(temporary) / "catalog.db"
             connection = sqlite3.connect(database)
-            connection.execute("PRAGMA user_version = 3")
+            connection.execute("PRAGMA user_version = 99")
             connection.close()
             with self.assertRaises(catalog.InventoryValidationError):
                 catalog.open_database(database)
             connection = sqlite3.connect(database)
             try:
-                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 3)
+                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 99)
             finally:
                 connection.close()
+
+    def test_import_into_known_application_versions_preserves_app_data_and_version(self):
+        for version in (3, 4):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as temporary:
+                database = Path(temporary) / "catalog.db"
+                connection = catalog.open_database(database)
+                connection.execute("CREATE TABLE application_marker(value TEXT)")
+                connection.execute("INSERT INTO application_marker VALUES('preserve me')")
+                connection.execute(f"PRAGMA user_version={version}")
+                connection.close()
+                connection = catalog.open_database(database)
+                try:
+                    catalog.import_inventory(connection, make_inventory(), "1" * 64)
+                    self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], version)
+                    self.assertEqual(connection.execute("SELECT value FROM application_marker").fetchone()[0],
+                                     "preserve me")
+                finally:
+                    connection.close()
 
     def test_imports_very_large_lv2_numeric_sentinel_as_real(self):
         with tempfile.TemporaryDirectory() as temporary:

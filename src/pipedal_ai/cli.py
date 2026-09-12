@@ -11,7 +11,9 @@ from .catalog import CatalogService
 from .compiler import PresetCompiler
 from .config import load_pi_config
 from .db import Database
-from .models import PresetSpec, ProposalSet
+from .models import PresetSpec, ProposalSet, RTXProposalRequest
+from .errors import PiPedalAIError
+from .pi.rtx_client import RTXClient
 from .rtx.tone3000 import Tone3000Client, merge_tone3000_metadata
 
 
@@ -66,13 +68,16 @@ def main() -> None:
     compile_cmd.add_argument("--output", type=Path, required=True)
     verify = commands.add_parser("verify-preset")
     verify.add_argument("file", type=Path)
+    diagnose = commands.add_parser("diagnose-rtx", help="Teste la vraie RTX sans repli local ni import PiPedal.")
+    diagnose.add_argument("--prompt", required=True)
+    diagnose.add_argument("--output", type=Path, help="Compile également les trois .piPreset dans ce dossier.")
     enrich = commands.add_parser("tone3000-enrich", help="Lie des métadonnées Tone3000 à un asset existant.")
     enrich.add_argument("asset_id")
     enrich.add_argument("--tone-id", type=int, required=True)
     enrich.add_argument("--model-id", type=int, required=True)
     enrich.add_argument("--token-env", default="TONE3000_ACCESS_TOKEN")
     args = parser.parse_args()
-    _, database, catalog, compiler = _services(args.config)
+    config, database, catalog, compiler = _services(args.config)
     if args.command == "status":
         row = database.active_catalog()
         print(json.dumps(dict(row), ensure_ascii=False, indent=2))
@@ -94,6 +99,26 @@ def main() -> None:
     elif args.command == "verify-preset":
         compiler.validate_archive(args.file)
         print("Archive .piPreset structurellement valide.")
+    elif args.command == "diagnose-rtx":
+        frozen = catalog.active_ref()
+        rtx_request = RTXProposalRequest(
+            schema_version="pipedal-ai.rtx-request/1.0.0",
+            request_id=database.new_id("diagnostic"), prompt=args.prompt,
+            capabilities=catalog.capabilities(frozen),
+        )
+        try:
+            proposal = asyncio.run(RTXClient(config.rtx).propose(rtx_request))
+            if proposal.request_id != rtx_request.request_id or proposal.catalog != frozen:
+                raise PiPedalAIError("Réponse RTX associée à un autre travail ou catalogue.")
+            if catalog.active_ref() != frozen:
+                raise PiPedalAIError("Le catalogue a changé pendant le diagnostic.")
+            catalog.validate_proposal_set(proposal)
+            artifacts = [compiler.compile(spec, args.output) for spec in proposal.proposals] if args.output else []
+        except PiPedalAIError as exc:
+            raise SystemExit(f"Diagnostic RTX échoué (aucun repli local) : {exc}") from exc
+        print(json.dumps({"source": "rtx", "catalog": frozen.model_dump(mode="json"),
+                          "variants": [spec.variant for spec in proposal.proposals],
+                          "artifacts": artifacts, "imported": False}, ensure_ascii=False, indent=2))
     elif args.command == "tone3000-enrich":
         token = os.environ.get(args.token_env, "").strip()
         if not token:
