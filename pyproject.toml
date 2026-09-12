@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pipedal-ai"
-version = "0.8.1"
+version = "0.8.2"
 description = "Authoritative PiPedal preset generation orchestrated by Raspberry Pi"
 readme = "README.md"
 requires-python = ">=3.11"

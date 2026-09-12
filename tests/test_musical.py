@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import wave
 import httpx
 from jsonschema import Draft202012Validator
 from pipedal_ai.asset_metadata import capture_info, enrich_local_assets
@@ -17,7 +18,7 @@ from pipedal_ai.config import OllamaConfig
 from pipedal_ai.errors import ContractError, RemoteServiceError
 from pipedal_ai.intent import fallback_tone_intent
 from pipedal_ai.knowledge import AXIS, TOOB, adapt_parameters, plugin_knowledge
-from pipedal_ai.models import MusicalPlan, RTXProposalRequest
+from pipedal_ai.models import MusicalChainChoice, MusicalPlan, RTXProposalRequest
 from pipedal_ai.rtx.musical import build_musical_set, compact_shortlist, musical_schema
 from pipedal_ai.rtx.ollama import OllamaClient
 from pipedal_ai.rtx.retrieval import CandidateRetriever
@@ -102,6 +103,101 @@ class MusicalTests(unittest.TestCase):
         req.capabilities['assets'][0]['metadata']={'nam_file':{'gear_type':'amp'}}
         with self.assertRaisesRegex(ValueError,'sans cabinet'):
             build_musical_set(plan,req,self.intent,short)
+
+    def cabinet_fixture(self, capture='amp'):
+        from test_core import descriptor
+        path = self.fixture.root/'uploads/CabIR/cab.wav'
+        path.parent.mkdir(parents=True)
+        with wave.open(str(path), 'wb') as out:
+            out.setnchannels(1); out.setsampwidth(2); out.setframerate(48000)
+            out.writeframes(b'\x00\x01'*32)
+        content = path.read_bytes()
+        with self.fixture.db.transaction() as c:
+            c.execute('INSERT INTO catalog_plugins VALUES(1,?,?,?,?,?,?,?,?)',
+                      ('plg_'+'4'*24,TOOB+'cab-ir','TooB Cab IR','Plugin','test',0,'c'*64,
+                       descriptor(TOOB+'cab-ir','TooB Cab IR',[])))
+            c.execute('INSERT INTO catalog_assets VALUES(1,?,?,?,?,?,?)',
+                      ('ast_'+'4'*24,'cab_ir','CabIR/cab.wav','.wav',len(content),hashlib.sha256(content).hexdigest()))
+            c.execute('INSERT INTO asset_metadata VALUES(?,?,?,?,?)',
+                      (1,'ast_'+'1'*24,'nam_file',json.dumps({'gear_type':capture}),'now'))
+
+    def test_amp_only_missing_cabinet_is_completed_and_validated_on_pi(self):
+        self.cabinet_fixture()
+        req,short,plan = self.request_plan()
+        value = build_musical_set(plan,req,self.intent,short)
+        self.catalog.validate_proposal_set(value)
+        for spec in value.proposals:
+            self.assertEqual([s.instance_id for s in spec.chain],['amp','cabinet'])
+            self.assertEqual(spec.chain[1].resources[0].asset_id,'ast_'+'4'*24)
+        artifact = self.compiler.compile(value.proposals[1], self.fixture.root/'completed')
+        self.compiler.validate_archive(Path(artifact['path']))
+        self.assertEqual(len(plan.chain),1)  # Raw model output is retained.
+        self.assertTrue(any('complété' in w for w in value.decision_report['warnings']))
+        self.assertEqual(value.model_dump(),build_musical_set(plan,req,self.intent,short).model_dump())
+
+    def test_full_rig_has_no_auto_cabinet_and_explicit_second_cabinet_is_rejected(self):
+        self.cabinet_fixture('full-rig')
+        req,short,plan = self.request_plan()
+        self.catalog.validate_proposal_set(build_musical_set(plan,req,self.intent,short))
+        plan.chain.append(MusicalChainChoice(role='cabinet',plugin_id='plg_'+'4'*24,asset_id='ast_'+'4'*24))
+        with self.assertRaisesRegex(ValueError,'non déclarée amp-only'):
+            build_musical_set(plan,req,self.intent,short)
+
+    def test_incompatible_alternative_nam_is_ignored_with_explanation(self):
+        req,short,plan = self.request_plan()
+        other = {**short['assets'][0], 'asset_id':'ast_'+'5'*24,'metadata':{'nam_file':{'gear_type':'amp'}}}
+        short['assets'].append(other)
+        req.capabilities['assets'].append(other)
+        plan.nam_candidates.append(other['asset_id'])
+        value = build_musical_set(plan,req,self.intent,short)
+        self.assertEqual(value.decision_report['musical_plan']['nam_candidates'],[plan.nam_candidates[0]])
+        self.assertTrue(any('incompatible' in w for w in value.decision_report['warnings']))
+        self.assertTrue(all(len(s.chain)==1 for s in value.proposals))
+
+    def test_completion_never_bypasses_cabinet_forbidden_constraint(self):
+        self.cabinet_fixture()
+        req,short,plan = self.request_plan()
+        self.intent.chain_constraints.allow_cab_ir = False
+        with self.assertRaisesRegex(ValueError,'aucun chargeur/IR autorisé'):
+            build_musical_set(plan,req,self.intent,short)
+
+    def test_completion_never_exceeds_plugin_budget(self):
+        self.cabinet_fixture()
+        req,short,plan = self.request_plan()
+        self.intent.chain_constraints.max_plugins = 1
+        with self.assertRaisesRegex(ValueError,'réserver une place'):
+            build_musical_set(plan,req,self.intent,short)
+
+    def test_shortlist_excludes_amp_only_without_a_usable_cabinet(self):
+        req,short,plan = self.request_plan()
+        short['assets'][0]['metadata'] = {'nam_file':{'gear_type':'amp'}}
+        compact = compact_shortlist(short,self.intent,self.prompt)
+        self.assertFalse(any(a['resource_role']=='nam_model' for a in compact['assets']))
+        self.assertFalse(any(p['uri']==TOOB+'nam' for p in compact['plugins']))
+
+    def test_pi_independently_rejects_cabinet_when_intent_forbids_it(self):
+        self.cabinet_fixture()
+        req,short,plan = self.request_plan()
+        value = build_musical_set(plan,req,self.intent,short)
+        value.decision_report['tone_intent']['chain_constraints']['allow_cab_ir'] = False
+        with self.assertRaisesRegex(ContractError,'interdite'):
+            self.catalog.validate_proposal_set(value)
+
+    def test_ollama_pipeline_completes_omitted_cabinet_without_retry(self):
+        self.cabinet_fixture()
+        req,short,plan = self.request_plan()
+        calls = []
+        def handler(incoming):
+            calls.append(json.loads(incoming.content))
+            answer = self.intent.model_dump(mode='json') if len(calls)==1 else plan.model_dump(mode='json')
+            return httpx.Response(200,json={'done':True,'done_reason':'stop','message':{'content':json.dumps(answer)}})
+        async def run():
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                return await OllamaClient(OllamaConfig('http://ollama.test','mock',10,0,num_ctx=16384),client).propose(req)
+        value = asyncio.run(run())
+        self.assertEqual(len(calls),2)
+        self.catalog.validate_proposal_set(value)
+        self.assertTrue(all(s.chain[1].instance_id=='cabinet' for s in value.proposals))
 
     def test_crunch_does_not_retrieve_axis_fuzz(self):
         req,short,plan=self.request_plan()

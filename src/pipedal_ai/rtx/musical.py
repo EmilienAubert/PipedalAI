@@ -5,7 +5,7 @@ from copy import deepcopy
 
 from ..asset_metadata import capture_info
 from ..knowledge import ORDER, KNOWLEDGE_VERSION, adapt_parameters, permits_extra_drive, plugin_knowledge
-from ..models import ChainStep, MusicalPlan, PresetSpec, ProposalSet
+from ..models import ChainStep, MusicalChainChoice, MusicalPlan, PresetSpec, ProposalSet
 from .ollama_schema import generation_schema
 
 
@@ -14,13 +14,26 @@ Select a SHORT serial chain from the supplied plugins and assets, respecting the
 verified roles. You never write LV2 parameters: deterministic adapters do that.
 Copy request_id and catalog. One plugin per role. Effects not requested should be
 omitted. Do not add a drive pedal just because an amp should crunch. A fuzz is not
-a compressor. Add a cabinet only with a declared amp-only NAM; omit it for full-rig
+a compressor. A declared amp-only NAM REQUIRES a cabinet IR step; omit it for full-rig
 or unknown captures. nam_candidates are up to three musically suitable alternatives
 to the selected NAM, including the selected NAM first. All must be compatible with
 the same cabinet policy. Prefer meaningful tone differences within the target.
 For an artist name without a song or tonal detail, make a cautious assumption;
 never claim an exact reproduction. Keep rationale short and in French.
+If a required cabinet is omitted, the host completes it using the first ranked,
+available cabinet IR and its verified loader. Never rely on this to exceed the
+plugin budget or bypass forbidden roles. No cabinet is added to unknown captures.
 """
+
+
+def cabinet_options(shortlist, intent):
+    """Only catalogue-backed, allowed cabinet loaders and ranked IRs."""
+    if not intent.chain_constraints.allow_cab_ir or "cabinet" in intent.chain_constraints.forbidden_roles:
+        return [], []
+    hosts = [p for p in shortlist["plugins"]
+             if plugin_knowledge(p)["adapter"] == "cab" and p["resource_roles"] == ["cab_ir"]]
+    impulses = [a for a in shortlist["assets"] if a["resource_role"] == "cab_ir"]
+    return hosts, impulses
 
 
 def compact_shortlist(shortlist, intent, prompt):
@@ -59,11 +72,20 @@ def compact_shortlist(shortlist, intent, prompt):
             selected.append(plugin)
     assets = []
     asset_counts = {}
+    hosts, impulses = cabinet_options({**shortlist, "plugins": selected}, intent)
+    can_complete_amp = bool(hosts and impulses and intent.chain_constraints.max_plugins >= 2)
+    usable_roles = {role for p in selected for role in p["resource_roles"]}
     for asset in shortlist["assets"]:
         role = asset["resource_role"]
+        if role not in usable_roles:
+            continue
+        if role == "nam_model" and capture_info(asset)["capture_type"] == "amp" and not can_complete_amp:
+            continue
         asset_counts[role] = asset_counts.get(role, 0) + 1
         if asset_counts[role] <= (6 if role == "nam_model" else 3):
             assets.append(asset)
+    available_roles = {a["resource_role"] for a in assets}
+    selected = [p for p in selected if set(p["resource_roles"]) <= available_roles]
     return {**shortlist, "plugins": selected, "assets": assets}
 
 
@@ -103,6 +125,7 @@ def musical_input(payload):
     for asset in result["candidate_shortlist"]["assets"]:
         keep = {k: asset[k] for k in ("asset_id", "display_name", "resource_role")}
         keep.update(capture_info(asset))
+        keep["requires_cabinet"] = keep["capture_type"] == "amp"
         keep["reasons"] = asset.get("retrieval_reasons", [])[:3]
         local = (asset.get("metadata") or {}).get("nam_file", {})
         tone = (asset.get("metadata") or {}).get("tone3000", {})
@@ -133,7 +156,11 @@ def validate_musical_set(proposal, capabilities, intent, prompt):
             if role == "amp":
                 for resource in step.resources:
                     if resource.role == "nam_model":
+                        if not intent.chain_constraints.allow_nam:
+                            raise ValueError("NAM interdit par les contraintes")
                         nam = assets[resource.asset_id]
+            if role == "cabinet" and not intent.chain_constraints.allow_cab_ir:
+                raise ValueError("IR de cabinet interdite par les contraintes")
             cabinet |= role == "cabinet"
         if len(roles) != len(set(roles)):
             raise ValueError("Plusieurs plugins pour un même rôle musical")
@@ -171,6 +198,31 @@ def build_musical_set(plan, request, intent, shortlist):
     for identifier in plan.nam_candidates:
         if identifier not in assets or assets[identifier]["resource_role"] != "nam_model":
             raise ValueError("Candidat NAM hors liste courte")
+    # Copy the model output: completion must not mutate the raw diagnostic or
+    # affect a second validation/build call. Final variants are still checked
+    # independently by the Pi against its catalogue and musical constraints.
+    plan = plan.model_copy(deep=True)
+    completion_notes = []
+    if selected_nam:
+        needs_cabinet = capture_info(assets[selected_nam])["capture_type"] == "amp"
+        compatible = []
+        for identifier in plan.nam_candidates:
+            if (capture_info(assets[identifier])["capture_type"] == "amp") == needs_cabinet:
+                compatible.append(identifier)
+            else:
+                completion_notes.append("Alternative NAM incompatible avec la politique de cabinet ignorée : " + identifier)
+        plan.nam_candidates = compatible
+        if needs_cabinet and not any(c.role == "cabinet" for c in plan.chain):
+            hosts, impulses = cabinet_options(shortlist, intent)
+            if not hosts or not impulses:
+                raise ValueError("Capture amp-only sans cabinet : aucun chargeur/IR autorisé dans la liste courte")
+            if len(plan.chain) >= min(8, intent.chain_constraints.max_plugins):
+                raise ValueError("Capture amp-only sans cabinet : réserver une place au cabinet dans le budget de plugins")
+            plan.chain.append(MusicalChainChoice(role="cabinet", plugin_id=hosts[0]["plugin_id"],
+                                                asset_id=impulses[0]["asset_id"]))
+            completion_notes.append("Cabinet obligatoire complété avec la première IR classée disponible : " + impulses[0]["display_name"])
+    plan.chain = sorted(plan.chain, key=lambda s: ORDER[s.role])
+    plan = MusicalPlan.model_validate(plan.model_dump(mode="python"))
     candidates = plan.nam_candidates or ([selected_nam] if selected_nam else [])
     variants = []
     explanations = {"conservative": "Plus ronde, attaque et saturation retenues",
@@ -191,7 +243,7 @@ def build_musical_set(plan, request, intent, shortlist):
               "prompt": request.prompt, "knowledge_version": KNOWLEDGE_VERSION,
               "capability_sha256": request.capabilities.get("capability_sha256"),
               "profile_id": (request.profile or {}).get("profile_id"),
-              "warnings": [], "choices": [{"role": c.role, "plugin": plugins[c.plugin_id]["name"]} for c in plan.chain]}
+              "warnings": completion_notes, "choices": [{"role": c.role, "plugin": plugins[c.plugin_id]["name"]} for c in plan.chain]}
     if any(candidates) and any(capture_info(assets[c])["capture_type"] == "unknown" for c in candidates):
         report["warnings"].append("Type de capture NAM inconnu : résultat à écouter avant usage live")
     if candidates and (request.profile or {}).get("nam_input_calibration_dbu") is None:

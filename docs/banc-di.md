@@ -35,6 +35,12 @@ Les profils full-rig compatibles contribuent au classement du mode texte avec
 un poids borné. Les déclarations de type NAM restent des métadonnées, pas une
 preuve acoustique. Une phase stéréo opposée ne doit pas annuler l'analyse d'énergie.
 
+Depuis la 0.8.2, si le plan musical omet le cabinet obligatoire d'un NAM amp-only,
+le générateur le complète avec la première IR classée disponible et son chargeur
+vérifié, puis le signale dans le rapport. Les alternatives NAM incompatibles avec
+cette politique sont ignorées. Les contraintes et le budget restent obligatoires ;
+aucun cabinet n'est ajouté automatiquement à une capture full-rig ou inconnue.
+
 ## Activation et première recette
 
 La génération automatique utilise seulement les plugins dotés d'un adaptateur

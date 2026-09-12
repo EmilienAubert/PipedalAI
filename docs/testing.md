@@ -1,5 +1,19 @@
 # Tests et recette
 
+## Complétion des chaînes NAM 0.8.2
+
+La génération musicale complète un cabinet omis pour un NAM déclaré amp-only,
+avec le chargeur vérifié et la première IR classée de la liste courte. Ce choix
+est consigné dans le rapport. Les alternatives NAM exigeant une autre politique
+de cabinet sont ignorées avec une explication ; le plan brut reste dans les traces.
+
+Les captures full-rig et inconnues ne reçoivent aucune IR automatiquement. Les
+amp-only sont retirés de la liste courte si aucun cabinet autorisé n'est utilisable.
+La complétion ne dépasse pas le budget de plugins et ne contourne pas une
+interdiction d'IR. Le Pi revalide indépendamment les fichiers et les contraintes.
+Les tests couvrent aussi la compilation du preset complété et un parcours Ollama
+simulé sans nouvelle tentative lorsque seule l'IR obligatoire a été oubliée.
+
 ## Correctif Windows 0.8.1
 
 Les sous-processus d'import du catalogue utilisent UTF-8 pour l'émission et la
