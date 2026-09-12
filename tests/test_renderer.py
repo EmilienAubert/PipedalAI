@@ -1,8 +1,10 @@
 from __future__ import annotations
 import asyncio
 from copy import deepcopy
+from contextlib import nullcontext
 import json
 from pathlib import Path
+import sys
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 from test_audio_bench import signal
@@ -65,7 +67,8 @@ class RendererTests(unittest.TestCase):
         client=Mock();client.config.websocket_url='ws://local.test/pipedal';client._request=fake.request
         renderer=PiPedalRenderer(self.catalog,PresetCompiler(self.catalog,self.root/'uploads',1000000),client,self.config,Mock())
         moments=[0,99] if failure not in ('xrun','user') else [0,0,0,99]
-        with patch('pipedal_ai.pi.renderer.connect',side_effect=fake.connection),patch('pipedal_ai.pi.renderer.asyncio.sleep',new=AsyncMock()),patch('pipedal_ai.pi.renderer.monotonic',side_effect=moments):
+        # Simulated transport is portable; the real Pi lock is tested separately.
+        with patch('pipedal_ai.pi.renderer.process_lock',return_value=nullcontext()),patch('pipedal_ai.pi.renderer.connect',side_effect=fake.connection),patch('pipedal_ai.pi.renderer.asyncio.sleep',new=AsyncMock()),patch('pipedal_ai.pi.renderer.monotonic',side_effect=moments):
             try:result=asyncio.run(renderer.render(self.spec,self.di,self.root/'result.wav',maintenance_confirmed=True))
             except Exception as exc:result=exc
         return fake,result
@@ -87,7 +90,14 @@ class RendererTests(unittest.TestCase):
         fake,result=self.run_render('user')
         self.assertIsInstance(result,ContractError)
         self.assertEqual(fake.board['name'],'User selected another')
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Verrou fcntl du banc Pi : Linux uniquement')
     def test_cross_process_lock_rejects_second_renderer(self):
         with process_lock(self.root/'locks'):
             with self.assertRaisesRegex(ContractError,'déjà actif'):
                 with process_lock(self.root/'locks'):pass
+    def test_real_renderer_rejects_windows_before_creating_lock_files(self):
+        root = self.root/'unsupported-locks'
+        with patch('pipedal_ai.pi.renderer.sys.platform', 'win32'):
+            with self.assertRaisesRegex(ContractError, 'nécessite Linux'):
+                with process_lock(root):pass
+        self.assertFalse(root.exists())

@@ -3,6 +3,7 @@ import asyncio
 from dataclasses import replace
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -122,7 +123,7 @@ class RealMusicalIntegrationTests(unittest.TestCase):
         root=Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as directory:
             db=Database(Path(directory)/'catalog.db'); db.initialize()
-            result=subprocess.run([sys.executable,str(root/'tools/phase0/pipedal_ai_catalog.py'),'import','--inventory',str(root/'examples/current-pi/pipedal-inventory-v2.json'),'--database',str(db.path)],capture_output=True,text=True)
+            result=subprocess.run([sys.executable,'-X','utf8',str(root/'tools/phase0/pipedal_ai_catalog.py'),'import','--inventory',str(root/'examples/current-pi/pipedal-inventory-v2.json'),'--database',str(db.path)],capture_output=True,text=True,encoding='utf-8',env={**os.environ,'PYTHONIOENCODING':'utf-8'})
             self.assertEqual(result.returncode,0,result.stderr)
             catalog=CatalogService(db); cap=catalog.capabilities()
             prompt='Son comme Buckethead, lead rock avec un léger delay'

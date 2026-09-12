@@ -6,6 +6,7 @@ from contextlib import contextmanager
 import os
 import json
 import math
+import sys
 from time import monotonic
 import uuid
 import zipfile
@@ -25,6 +26,8 @@ RENDERER_VERSION = "pipedal-ai.pipedal-bench/1.0.0"
 @contextmanager
 def process_lock(root):
     """A Pi-local lock shared by CLI and web service processes."""
+    if not sys.platform.startswith("linux"):
+        raise ContractError("Le banc de rendu PiPedal nécessite Linux sur le Raspberry Pi")
     import fcntl
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     path = safe_path(root, ".render.lock", exists=False)

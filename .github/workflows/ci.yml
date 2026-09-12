@@ -14,11 +14,15 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version: ["3.11", "3.12", "3.13"]
+        include:
+          - os: windows-latest
+            python-version: "3.11"
 
     steps:
       - name: Check out source
@@ -37,5 +41,6 @@ jobs:
       - name: Test MVP core
         run: python -m unittest discover -s tests -v
       - name: Test phase-zero tooling
+        if: runner.os == 'Linux'
         working-directory: tools/phase0
         run: python -m unittest discover -s tests -v

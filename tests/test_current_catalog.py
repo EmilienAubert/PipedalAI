@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -28,9 +29,10 @@ class CurrentCatalogIntegrationTests(unittest.TestCase):
             database = Database(Path(directory) / "catalog.db")
             database.initialize()
             imported = subprocess.run(
-                [sys.executable, str(ROOT / "tools/phase0/pipedal_ai_catalog.py"), "import",
+                [sys.executable, "-X", "utf8", str(ROOT / "tools/phase0/pipedal_ai_catalog.py"), "import",
                  "--inventory", str(ROOT / "examples/current-pi/pipedal-inventory-v2.json"),
                  "--database", str(database.path)], capture_output=True, text=True, encoding="utf-8",
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
             )
             self.assertEqual(imported.returncode, 0, imported.stdout + imported.stderr)
             catalog = CatalogService(database)

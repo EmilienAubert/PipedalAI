@@ -1,5 +1,30 @@
 # Tests et recette
 
+## Correctif Windows 0.8.1
+
+Les sous-processus d'import du catalogue utilisent UTF-8 pour l'émission et la
+lecture, y compris sous Windows PowerShell 5.1. Les tests du faux serveur PiPedal
+isolent le verrou système : ils s'exécutent sur Windows et Linux. Le test du vrai
+verrou `fcntl` reste réservé à Linux, où le banc de rendu fonctionne. Un appel au
+banc réel sur Windows est refusé explicitement avant toute création de fichier.
+
+La CI ajoute Windows/Python 3.11 aux trois versions Python testées sous Linux.
+Un test de lien symbolique peut aussi être ignoré si Windows ne permet pas sa
+création. Ces exclusions sont indiquées par `skipped` et ne sont pas des échecs.
+
+Depuis le dossier du dépôt Windows, après avoir arrêté le service RTX :
+
+```powershell
+git pull --ff-only
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\pipedal-ai-rtx.exe --config .\config\rtx.toml
+```
+
+Conserver `config/`, `data/` et les clés existantes. Ce correctif ne modifie ni
+le modèle Ollama ni ses réglages. La suite utilise des modèles simulés : une
+recette `diagnose-rtx` depuis le Pi reste nécessaire pour tester le modèle réel.
+
 ## Vérifications 0.8.0
 
 Validation de livraison : 105 tests applicatifs et 19 tests phase zéro passés,
