@@ -73,6 +73,48 @@ ou `..`. Vérifie le chemin affiché par PiPedal et les droits d'écriture du co
 qui lance PiPedal AI. Les IR usine liées symboliquement conservent la politique
 de confiance explicite du compilateur.
 
+### Droits des deux dossiers du banc
+
+Depuis la 0.8.4, les deux sous-dossiers `PiPedalAI` doivent être préparés avant
+la première séance. Le service AI ne crée pas ces dossiers avec des droits privés :
+PiPedal doit pouvoir lire la copie DI et PiPedal AI doit pouvoir lire la prise
+enregistrée. Les DI originales, préécoutes et journaux restent privés.
+
+Pour PiPedal exécuté sous `pipedal_d` et PiPedal AI lancé sous `rasca`, avec les
+chemins de configuration ci-dessus, exécute une fois sur le Pi :
+
+```bash
+sudo apt-get install -y acl
+sudo install -d -o pipedal_d -g pipedal_d -m 2770 \
+  /var/pipedal/audio_uploads/shared/audio/Tracks/PiPedalAI \
+  "/var/pipedal/audio_uploads/shared/audio/Audio Recordings/PiPedalAI"
+sudo setfacl -m \
+  'u:rasca:rwx,m::rwx,d:u::rwx,d:u:rasca:rwx,d:g::rwx,d:m::rwx,d:o::---' \
+  /var/pipedal/audio_uploads/shared/audio/Tracks/PiPedalAI \
+  "/var/pipedal/audio_uploads/shared/audio/Audio Recordings/PiPedalAI"
+```
+
+Adapte les comptes si `id` et `ps -C ppdl_main,pipedald -o user,group,comm`
+indiquent d'autres utilisateurs. Adapte aussi les chemins si ta configuration
+diffère. Le bit setgid conserve le groupe PiPedal sur les copies DI ; l'ACL par
+défaut permet au compte AI de lire les nouveaux enregistrements. La copie DI
+partagée est écrite en mode `0640`. Ces commandes ne modifient pas les droits
+des dossiers parents ni ceux du catalogue. Leur effet est immédiat, sans nouvelle
+connexion. Lance ensuite PiPedal AI sous ton compte habituel.
+
+Avec l'unité systemd fournie, utilise `pipedal-ai` à la place de `rasca` dans
+l'ACL. Le cloisonnement systemd exige aussi un drop-in autorisant précisément
+ces deux sous-dossiers en écriture :
+
+```ini
+[Service]
+ReadWritePaths=/var/pipedal/audio_uploads/shared/audio/Tracks/PiPedalAI
+ReadWritePaths="/var/pipedal/audio_uploads/shared/audio/Audio Recordings/PiPedalAI"
+```
+
+Recharge systemd puis redémarre le service AI après modification du drop-in.
+Les autres chemins audio restent sous la protection en lecture seule de l'unité.
+
 Relance les services AI sur les deux machines. Génère un nouveau travail texte
 terminé, sélectionne ta DI, confirme la séance hors live et clique « Comparer /
 optimiser sur la DI ». Avec `max_renders=3`, seuls les trois originaux sont évalués.

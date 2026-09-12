@@ -75,12 +75,12 @@ def read_audio(path: Path, *, max_seconds=180.0, require_di=False):
     return data, rate
 
 
-def write_pcm(path: Path, data, rate=48000):
+def write_pcm(path: Path, data, rate=48000, *, group_readable=False):
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     if path.exists() or path.is_symlink():
         raise ValueError("Audio existant refusé")
     sf.write(path, data, rate, subtype="PCM_24", format="WAV")
-    os.chmod(path, 0o600)
+    os.chmod(path, 0o640 if group_readable else 0o600)
 
 
 def audio_levels(data):

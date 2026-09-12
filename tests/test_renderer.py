@@ -3,6 +3,7 @@ import asyncio
 from copy import deepcopy
 from contextlib import nullcontext
 import json
+import os
 from pathlib import Path
 import sys
 import unittest
@@ -15,7 +16,7 @@ from pipedal_ai.config import BenchConfig
 from pipedal_ai.degraded import DegradedProposer
 from pipedal_ai.errors import ContractError, RemoteServiceError
 from pipedal_ai.knowledge import TOOB
-from pipedal_ai.pi.renderer import PiPedalRenderer, process_lock
+from pipedal_ai.pi.renderer import PiPedalRenderer, process_lock, shared_bench_file
 
 
 class FakePiPedal:
@@ -62,6 +63,8 @@ class RendererTests(unittest.TestCase):
         self.di=self.root/'di.wav';write_pcm(self.di,signal())
         self.spec=DegradedProposer().propose('renderer','warm crunch',self.catalog.capabilities()).proposals[1]
         self.config=BenchConfig(enabled=True,output_root=self.root/'bench')
+        for directory in (self.config.track_directory,self.config.record_directory):
+            (self.root/'uploads'/directory/'PiPedalAI').mkdir(parents=True)
     def run_render(self,failure=None):
         fake=FakePiPedal(signal(),failure)
         client=Mock();client.config.websocket_url='ws://local.test/pipedal';client._request=fake.request
@@ -101,3 +104,28 @@ class RendererTests(unittest.TestCase):
             with self.assertRaisesRegex(ContractError, 'nécessite Linux'):
                 with process_lock(root):pass
         self.assertFalse(root.exists())
+
+    def test_missing_shared_directory_refuses_before_changing_live_board(self):
+        (self.root/'uploads'/self.config.record_directory/'PiPedalAI').rmdir()
+        fake,result=self.run_render()
+        self.assertIsInstance(result,ContractError)
+        self.assertIn('Dossier partagé',str(result))
+        self.assertEqual(fake.requests,[])
+        self.assertEqual(fake.board,fake.previous)
+
+    def test_shared_directory_permission_refusal_precedes_live_changes(self):
+        with patch('pipedal_ai.pi.renderer.os.access',return_value=False):
+            fake,result=self.run_render()
+        self.assertIsInstance(result,ContractError)
+        self.assertIn('Droits insuffisants',str(result))
+        self.assertEqual(fake.requests,[])
+
+    @unittest.skipUnless(sys.platform.startswith('linux'),'Permissions POSIX : Linux uniquement')
+    def test_playback_copy_group_readable_but_source_and_result_stay_private(self):
+        fake,result=self.run_render()
+        self.assertIsInstance(result,dict,result)
+        tracks=list((self.root/'uploads'/self.config.track_directory/'PiPedalAI').glob('*.wav'))
+        self.assertEqual(len(tracks),1)
+        self.assertEqual(tracks[0].stat().st_mode & 0o777,0o640)
+        self.assertEqual(self.di.stat().st_mode & 0o777,0o600)
+        self.assertEqual((self.root/'result.wav').stat().st_mode & 0o777,0o600)

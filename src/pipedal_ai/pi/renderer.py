@@ -23,6 +23,18 @@ from ..knowledge import TOOB
 RENDERER_VERSION = "pipedal-ai.pipedal-bench/1.0.0"
 
 
+def shared_bench_file(upload_root, relative):
+    """Require administrator-provisioned shared folders before touching audio."""
+    path = safe_path(upload_root, relative, exists=False)
+    if not path.parent.is_dir():
+        raise ContractError("Dossier partagé du banc absent : " + str(path.parent) +
+                            ". Préparer les dossiers PiPedalAI selon docs/banc-di.md.")
+    if not os.access(path.parent, os.R_OK | os.W_OK | os.X_OK):
+        raise ContractError("Droits insuffisants sur le dossier partagé du banc : " + str(path.parent) +
+                            ". Vérifier les ACL PiPedal AI/PiPedal selon docs/banc-di.md.")
+    return path
+
+
 @contextmanager
 def process_lock(root):
     """A Pi-local lock shared by CLI and web service processes."""
@@ -143,10 +155,11 @@ class PiPedalRenderer:
         upload_root = self.compiler.upload_root
         track_relative = f"{self.config.track_directory}/PiPedalAI/{token}.wav"
         record_relative = f"{self.config.record_directory}/PiPedalAI/{token}.wav"
-        track = safe_path(upload_root, track_relative, exists=False)
-        recorded = safe_path(upload_root, record_relative, exists=False)
-        write_pcm(track, data, rate)
-        recorded.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        track = shared_bench_file(upload_root, track_relative)
+        recorded = shared_bench_file(upload_root, record_relative)
+        # The prepared setgid folder supplies PiPedal's group. Only this playback
+        # copy is group-readable; managed DI, previews and journals stay private.
+        write_pcm(track, data, rate, group_readable=True)
         resources = {self.catalog.asset_row(spec.catalog.revision, r.asset_id)["relative_path"]:
                      self.catalog.asset_row(spec.catalog.revision, r.asset_id) for s in spec.chain for r in s.resources}
         for item in board["items"]:
