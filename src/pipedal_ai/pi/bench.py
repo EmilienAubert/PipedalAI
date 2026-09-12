@@ -278,7 +278,10 @@ class BenchService:
         if not row:
             raise KeyError(candidate_id)
         render = Path(row["render_path"])
-        root = self.config.output_root.resolve(strict=True)
+        # Keep the same spelling used when storing candidate paths (Windows
+        # short names can resolve to a different lexical root). safe_path checks
+        # resolved containment and rejects symlinks separately.
+        root = self.config.output_root.absolute()
         path = Path(row["preview_path"])
         safe_path(root, path.absolute().relative_to(root).as_posix())
         safe_path(root, render.absolute().relative_to(root).as_posix())
@@ -297,7 +300,7 @@ class BenchService:
         record = next((a for a in session["report"].get("optimized_artifacts", []) if a["variant"] == variant), None)
         if not record:
             raise KeyError(variant)
-        root = self.config.output_root.resolve(strict=True)
+        root = self.config.output_root.absolute()
         path = safe_path(root, Path(record["path"]).absolute().relative_to(root).as_posix())
         if digest_file(path) != record["sha256"]:
             raise ValueError("Preset mesuré modifié")
