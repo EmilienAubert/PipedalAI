@@ -197,7 +197,7 @@ def load_pi_config(path: Path) -> PiConfig:
             http_base_url=str(pipedal.get("http_base_url", "http://127.0.0.1:80")).rstrip("/"),
             websocket_url=str(pipedal.get("websocket_url", "ws://127.0.0.1:80/pipedal")),
             upload_path=str(pipedal.get("upload_path", "/var/uploadPreset")),
-            max_upload_bytes=int(pipedal.get("max_upload_bytes", 1048576)),
+            max_upload_bytes=int(pipedal.get("max_upload_bytes", 67108864)),
             allow_import=bool(pipedal.get("allow_import", False)),
             allow_activation=bool(pipedal.get("allow_activation", False)),
         ),

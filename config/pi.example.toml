@@ -22,7 +22,8 @@ enabled = false
 http_base_url = "http://127.0.0.1:80"
 websocket_url = "ws://127.0.0.1:80/pipedal"
 upload_path = "/var/uploadPreset"
-max_upload_bytes = 1048576
+# Local import cap for portable presets containing NAM/IR media (64 MiB).
+max_upload_bytes = 67108864
 allow_import = false
 allow_activation = false
 

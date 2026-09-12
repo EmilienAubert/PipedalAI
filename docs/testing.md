@@ -1,5 +1,17 @@
 # Tests et recette
 
+## Taille des imports 0.8.3
+
+La limite locale d'import par défaut et l'exemple Pi passent de 1 à 64 Mio, car
+les presets portables embarquent les NAM et IR. Un refus indique désormais la
+taille du fichier, la limite locale et le réglage à vérifier ; il ne présente
+plus cette limite comme un refus du serveur PiPedal.
+
+Les configurations existantes restent respectées. Modifier la ligne
+`max_upload_bytes = 67108864` dans la section `[pipedal]` de `config/pi.toml`, puis
+redémarrer le service Pi AI pour adopter cette limite. La validation des archives
+et la limite décompressée restent appliquées.
+
 ## Complétion des chaînes NAM 0.8.2
 
 La génération musicale complète un cabinet omis pour un NAM déclaré amp-only,

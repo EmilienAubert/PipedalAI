@@ -29,7 +29,10 @@ class PiPedalClient:
             raise RemoteServiceError("Import PiPedal désactivé par configuration.")
         size = path.stat().st_size
         if size > self.config.max_upload_bytes:
-            raise RemoteServiceError(f"Preset trop grand pour PiPedal ({size} octets).")
+            raise RemoteServiceError(
+                f"Limite locale d'import dépassée : {size} > {self.config.max_upload_bytes} octets. "
+                "Vérifier [pipedal].max_upload_bytes dans la configuration Pi."
+            )
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
